@@ -1,0 +1,17 @@
+# --- REACT / WEB (admin-dashboard) ---
+admin-dashboard/node_modules/
+admin-dashboard/dist/
+admin-dashboard/.env
+
+# --- FLUTTER / MOBILE (mobile-app) ---
+mobile-app/.dart_tool/
+mobile-app/build/
+mobile-app/.pub-cache/
+mobile-app/.idea/
+mobile-app/ios/Pods/
+mobile-app/ios/.symlinks/
+
+# --- FILES SAMPAH OS ---
+.DS_Store
+Thumbs.db
+*.log
