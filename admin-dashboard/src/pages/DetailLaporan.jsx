@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { supabaseMock } from '../data/mockSupabase';
+import { supabase } from '../lib/supabase';
 
 const DetailLaporan = () => {
   const { id } = useParams();
@@ -12,7 +12,11 @@ const DetailLaporan = () => {
     // For the mockup, we will use the specific details from the screenshot directly
     const fetchReport = async () => {
       setLoading(true);
-      const { data } = await supabaseMock.from('reports').select();
+      try {
+        const { data } = await supabase.from('reports').select();
+      } catch (error) {
+        console.error(error);
+      }
       // Even if we fetch, we will hardcode the display data for now to match the exact mockup
       setReport({
         id: id,

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 
 const Toggle = ({ checked, onChange }) => (
   <button
@@ -13,6 +14,15 @@ const PengaturanAkun = () => {
   const [emailNotif, setEmailNotif] = useState(true);
   const [exciseAlerts, setExciseAlerts] = useState(true);
   const [newReports, setNewReports] = useState(false);
+  const { user, profile, signOut } = useAuth();
+  
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("Failed to sign out", error);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-lg w-full max-w-container-max mx-auto p-4 lg:p-0">
@@ -33,23 +43,29 @@ const PengaturanAkun = () => {
               <h2 className="font-h2 text-[18px] font-bold text-on-surface">Profil Admin</h2>
             </div>
             <div className="p-6 flex flex-col sm:flex-row items-center sm:items-start gap-6">
-              <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-outline-variant shadow-sm">
-                <img
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAMUUoAy_YovdPIXKEvCvE9JODj85l39QSL8y3FjDVtbaNZI0iARKknAHqVm0pUabTpQkWHveRzLsC0N34OkCACH6yi7S_fe_wNOTAstsJNBPzSfBcTO7OUacKxsOyDVSNNxZrurhPnjKbnFD_80p9aQILZzZ3mA97WkbznptGYIjoVJLfhca6dQFoJa8GKEud70ymTYhgo_VYx_G2i7PyAl0Tp3dTxgW4elpy3GUS1Z2cc2AKPTStIWugEGys-EVwYiuEsWQrhjg"
-                  alt="Super Admin APHT"
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-outline-variant shadow-sm bg-primary-container flex items-center justify-center">
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile?.full_name || 'Admin'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-4xl text-on-primary font-bold">{profile?.full_name ? profile.full_name.charAt(0) : 'A'}</span>
+                )}
               </div>
               <div className="flex-1 flex flex-col items-center sm:items-start text-center sm:text-left">
                 <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold">NAMA LENGKAP</span>
-                <h3 className="font-h1 text-[20px] font-bold text-on-surface mt-1">Super Admin APHT</h3>
+                <h3 className="font-h1 text-[20px] font-bold text-on-surface mt-1">{profile?.full_name || 'Super Admin APHT'}</h3>
 
                 <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold mt-4">EMAIL INSTITUSI</span>
-                <p className="font-body-md text-[14px] text-on-surface-variant mt-1">admin@apht.sumenep.go.id</p>
+                <p className="font-body-md text-[14px] text-on-surface-variant mt-1">{user?.email || 'admin@apht.sumenep.go.id'}</p>
 
                 <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold mt-4">PERAN SISTEM</span>
                 <div className="mt-2">
-                  <span className="bg-[#000051] text-white px-3 py-1 rounded-full text-[11px] font-bold tracking-wide">Super Administrator</span>
+                  <span className="bg-[#000051] text-white px-3 py-1 rounded-full text-[11px] font-bold tracking-wide">
+                    {profile?.role === 'super_admin' ? 'Super Administrator' : (profile?.role || 'Administrator')}
+                  </span>
                 </div>
               </div>
               <div className="mt-4 sm:mt-0">
@@ -88,7 +104,10 @@ const PengaturanAkun = () => {
                 <h3 className="font-body-lg text-[16px] font-bold text-error">Sesi Akun</h3>
                 <p className="font-body-md text-[13px] text-on-surface-variant mt-1">Mengakhiri sesi aktif Anda di perangkat ini.</p>
               </div>
-              <button className="flex items-center justify-center gap-2 px-6 py-2 bg-error text-white rounded-lg font-label-sm text-sm font-semibold hover:bg-[#93000a] transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap">
+              <button 
+                onClick={handleLogout}
+                className="flex items-center justify-center gap-2 px-6 py-2 bg-error text-white rounded-lg font-label-sm text-sm font-semibold hover:bg-[#93000a] transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"
+              >
                 <span className="material-symbols-outlined text-[18px]">logout</span>
                 Keluar dari Sistem
               </button>

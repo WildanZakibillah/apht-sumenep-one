@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/constants.dart';
+import '../../main.dart';
 import '../login_screen.dart';
 
-class ProfilView extends StatelessWidget {
+class ProfilView extends StatefulWidget {
   const ProfilView({super.key});
+
+  @override
+  State<ProfilView> createState() => _ProfilViewState();
+}
+
+class _ProfilViewState extends State<ProfilView> {
+  bool _isLoggingOut = false;
 
   @override
   Widget build(BuildContext context) {
@@ -136,43 +145,57 @@ class ProfilView extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Budi Santoso',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : AppTheme.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Admin Utama Gudang',
-                  style: TextStyle(
-                    color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+            child: Builder(
+              builder: (context) {
+                final auth = AuthProviderScope.of(context);
+                final profile = auth.profile;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      profile?.fullName ?? 'User',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : AppTheme.onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      profile != null ? AppConstants.roleDisplayName(profile.role) : '',
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Admin',
-              style: TextStyle(
-                color: AppTheme.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+          Builder(
+            builder: (context) {
+              final auth = AuthProviderScope.of(context);
+              final roleName = auth.profile != null
+                  ? AppConstants.roleDisplayName(auth.profile!.role)
+                  : 'User';
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  roleName,
+                  style: TextStyle(
+                    color: AppTheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -390,16 +413,29 @@ class ProfilView extends StatelessWidget {
 
   Widget _buildLogoutButton(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
-      },
-      icon: const Icon(Icons.logout_rounded, size: 20),
-      label: const Text(
-        'Keluar Aplikasi',
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      onPressed: _isLoggingOut
+          ? null
+          : () async {
+              setState(() => _isLoggingOut = true);
+              final auth = AuthProviderScope.of(context);
+              await auth.logout();
+              if (!mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+      icon: _isLoggingOut
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.logout_rounded, size: 20),
+      label: Text(
+        _isLoggingOut ? 'Keluar...' : 'Keluar Aplikasi',
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.error,

@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../main.dart';
 import 'main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,6 +12,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  String? _errorMessage;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   
@@ -221,6 +224,30 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       ),
                                       
                                       const SizedBox(height: 24),
+
+                                      // Error Message
+                                      if (_errorMessage != null)
+                                        Container(
+                                          margin: const EdgeInsets.only(bottom: 16),
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.error_outline, color: Colors.red.shade300, size: 20),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  _errorMessage!,
+                                                  style: TextStyle(color: Colors.red.shade200, fontSize: 13),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       
                                       // Premium Button
                                       Container(
@@ -236,13 +263,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                           ],
                                         ),
                                         child: ElevatedButton(
-                                          onPressed: () {
-                                            Navigator.of(context).pushReplacement(
-                                              MaterialPageRoute(
-                                                builder: (context) => const MainScreen(),
-                                              ),
-                                            );
-                                          },
+                                          onPressed: _isLoading ? null : _handleLogin,
                                           style: ElevatedButton.styleFrom(
                                             padding: EdgeInsets.zero,
                                             shape: RoundedRectangleBorder(
@@ -250,11 +271,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                             ),
                                             elevation: 0,
                                             backgroundColor: Colors.transparent,
+                                            disabledBackgroundColor: Colors.transparent,
                                           ),
                                           child: Ink(
                                             decoration: BoxDecoration(
-                                              gradient: const LinearGradient(
-                                                colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)], // Bright blue to deep blue
+                                              gradient: LinearGradient(
+                                                colors: _isLoading
+                                                    ? [const Color(0xFF3B82F6).withValues(alpha: 0.5), const Color(0xFF1D4ED8).withValues(alpha: 0.5)]
+                                                    : [const Color(0xFF3B82F6), const Color(0xFF1D4ED8)],
                                                 begin: Alignment.topLeft,
                                                 end: Alignment.bottomRight,
                                               ),
@@ -263,15 +287,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                             child: Container(
                                               alignment: Alignment.center,
                                               padding: const EdgeInsets.symmetric(vertical: 18),
-                                              child: const Text(
-                                                'MASUK',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.bold,
-                                                  letterSpacing: 1.5,
-                                                ),
-                                              ),
+                                              child: _isLoading
+                                                  ? const SizedBox(
+                                                      width: 22,
+                                                      height: 22,
+                                                      child: CircularProgressIndicator(
+                                                        color: Colors.white,
+                                                        strokeWidth: 2.5,
+                                                      ),
+                                                    )
+                                                  : const Text(
+                                                      'MASUK',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 15,
+                                                        fontWeight: FontWeight.bold,
+                                                        letterSpacing: 1.5,
+                                                      ),
+                                                    ),
                                             ),
                                           ),
                                         ),
@@ -302,6 +335,39 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ],
       ),
     );
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Email dan kata sandi harus diisi.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final auth = AuthProviderScope.of(context);
+    final success = await auth.login(email, password);
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const MainScreen()),
+      );
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = auth.errorMessage ?? 'Login gagal. Periksa email dan kata sandi.';
+      });
+    }
   }
 
   Widget _buildTextField({

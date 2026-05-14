@@ -1,23 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../hooks/useAuth';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('admin@apht.com');
   const [password, setPassword] = useState('password');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading } = useAppContext();
+  const { signIn, loading, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg('');
-    const { error } = await login(email, password);
-    if (error) {
+    try {
+      await signIn(email, password);
+      // navigation handled by useEffect
+    } catch (error) {
       setErrorMsg(error.message);
-    } else {
-      navigate('/dashboard');
     }
   };
 
@@ -94,11 +100,11 @@ const LoginPage = () => {
 
           <button 
             type="submit" 
-            disabled={isLoading}
+            disabled={loading}
             className="mt-6 w-full py-3 bg-primary text-on-primary rounded-xl font-medium hover:bg-primary-container hover:shadow-lg transition-all active:scale-[0.98] flex justify-center items-center gap-2"
           >
-            {isLoading ? (
-              <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
               <>
                 Sign In

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../core/supabase_client.dart';
 import 'login_screen.dart';
+import 'main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -45,7 +47,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     Future.delayed(const Duration(milliseconds: 5000), () {
       if (mounted) {
         _splashController.stop();
-        _navigateToLogin();
+        _navigateNext();
       }
     });
   }
@@ -56,12 +58,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     super.dispose();
   }
 
-  void _navigateToLogin() {
+  /// Check auth state and navigate accordingly.
+  void _navigateNext() {
+    final isLoggedIn = SupabaseConfig.isAuthenticated;
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const LoginScreen(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            isLoggedIn ? const MainScreen() : const LoginScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          // Transisi fade yang elegan saat pindah ke halaman login
+          // Transisi fade yang elegan saat pindah ke halaman berikutnya
           return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 1000), 

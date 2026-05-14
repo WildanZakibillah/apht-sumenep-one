@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabaseMock } from '../data/mockSupabase';
+import { supabase } from '../lib/supabase';
 
 const ReportCard = ({ report }) => {
   const getStatusStyles = (status) => {
@@ -81,8 +81,12 @@ const IncomingReports = () => {
   useEffect(() => {
     const fetchReports = async () => {
       setLoading(true);
-      const { data } = await supabaseMock.from('reports').select();
-      setReports(data);
+      try {
+        const { data } = await supabase.from('reports').select();
+        if (data) setReports(data);
+      } catch (e) {
+        console.error(e);
+      }
       setLoading(false);
     };
     fetchReports();

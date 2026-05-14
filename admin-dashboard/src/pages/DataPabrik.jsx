@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabaseMock } from '../data/mockSupabase';
+import { supabase } from '../lib/supabase';
 
 const FactoryData = () => {
   const [factories, setFactories] = useState([]);
@@ -9,8 +9,12 @@ const FactoryData = () => {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const { data } = await supabaseMock.from('factories').select();
-      setFactories(data);
+      try {
+        const { data } = await supabase.from('factories').select('*');
+        if (data) setFactories(data);
+      } catch (e) {
+        console.error(e);
+      }
       setLoading(false);
     };
     fetchData();
