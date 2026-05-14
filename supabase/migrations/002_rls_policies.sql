@@ -6,19 +6,19 @@
 -- ============================================================
 -- Helper function: get current user's role
 -- ============================================================
-CREATE OR REPLACE FUNCTION auth.user_role()
+CREATE OR REPLACE FUNCTION public.user_role()
 RETURNS TEXT AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Helper function: get current user's factory_id
-CREATE OR REPLACE FUNCTION auth.user_factory_id()
+CREATE OR REPLACE FUNCTION public.user_factory_id()
 RETURNS UUID AS $$
   SELECT factory_id FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Helper: check if user is super_admin
-CREATE OR REPLACE FUNCTION auth.is_super_admin()
+CREATE OR REPLACE FUNCTION public.is_super_admin()
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
@@ -37,7 +37,7 @@ CREATE POLICY "Users can view own profile"
 
 CREATE POLICY "Super admin can view all profiles"
   ON profiles FOR SELECT
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 CREATE POLICY "Users can update own profile"
   ON profiles FOR UPDATE
@@ -46,7 +46,7 @@ CREATE POLICY "Users can update own profile"
 
 CREATE POLICY "Super admin can manage all profiles"
   ON profiles FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- FACTORIES
@@ -60,7 +60,7 @@ CREATE POLICY "Authenticated users can view factories"
 
 CREATE POLICY "Super admin can manage factories"
   ON factories FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- WAREHOUSES
@@ -74,7 +74,7 @@ CREATE POLICY "Authenticated users can view warehouses"
 
 CREATE POLICY "Super admin can manage warehouses"
   ON warehouses FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- REGIONS
@@ -88,7 +88,7 @@ CREATE POLICY "Authenticated users can view regions"
 
 CREATE POLICY "Super admin can manage regions"
   ON regions FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- PRODUCT_TYPES
@@ -102,7 +102,7 @@ CREATE POLICY "Authenticated users can view product types"
 
 CREATE POLICY "Super admin can manage product types"
   ON product_types FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- BRANDS
@@ -117,8 +117,8 @@ CREATE POLICY "Authenticated users can view brands"
 CREATE POLICY "Factory users can manage own brands"
   ON brands FOR ALL
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 -- ============================================================
@@ -133,7 +133,7 @@ CREATE POLICY "Authenticated users can view HJE rates"
 
 CREATE POLICY "Super admin can manage HJE rates"
   ON hje_rates FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- PRODUCTS
@@ -148,8 +148,8 @@ CREATE POLICY "Authenticated users can view products"
 CREATE POLICY "Factory users can manage own products"
   ON products FOR ALL
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 -- ============================================================
@@ -160,20 +160,20 @@ ALTER TABLE productions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own productions"
   ON productions FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Factory users can create productions"
   ON productions FOR INSERT
   WITH CHECK (
-    factory_id = auth.user_factory_id()
-    AND auth.user_role() IN ('admin_pabrik', 'staf_lapangan')
+    factory_id = public.user_factory_id()
+    AND public.user_role() IN ('admin_pabrik', 'staf_lapangan')
   );
 
 CREATE POLICY "Super admin full access to productions"
   ON productions FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- CUKAI_ALLOCATIONS
@@ -183,13 +183,13 @@ ALTER TABLE cukai_allocations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own allocations"
   ON cukai_allocations FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Super admin can manage allocations"
   ON cukai_allocations FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- CUKAI_USAGE_LOG
@@ -199,20 +199,20 @@ ALTER TABLE cukai_usage_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own usage log"
   ON cukai_usage_log FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Factory users can create usage entries"
   ON cukai_usage_log FOR INSERT
   WITH CHECK (
-    factory_id = auth.user_factory_id()
-    AND auth.user_role() IN ('admin_pabrik', 'staf_lapangan')
+    factory_id = public.user_factory_id()
+    AND public.user_role() IN ('admin_pabrik', 'staf_lapangan')
   );
 
 CREATE POLICY "Super admin full access to usage log"
   ON cukai_usage_log FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- CUKAI_REQUESTS
@@ -222,20 +222,20 @@ ALTER TABLE cukai_requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own requests"
   ON cukai_requests FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Factory admin can create requests"
   ON cukai_requests FOR INSERT
   WITH CHECK (
-    factory_id = auth.user_factory_id()
-    AND auth.user_role() IN ('admin_pabrik')
+    factory_id = public.user_factory_id()
+    AND public.user_role() IN ('admin_pabrik')
   );
 
 CREATE POLICY "Super admin can manage requests"
   ON cukai_requests FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- DISTRIBUTORS
@@ -249,7 +249,7 @@ CREATE POLICY "Authenticated users can view distributors"
 
 CREATE POLICY "Super admin can manage distributors"
   ON distributors FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- OUTGOING_GOODS
@@ -259,20 +259,20 @@ ALTER TABLE outgoing_goods ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own outgoing goods"
   ON outgoing_goods FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Factory users can create outgoing entries"
   ON outgoing_goods FOR INSERT
   WITH CHECK (
-    factory_id = auth.user_factory_id()
-    AND auth.user_role() IN ('admin_pabrik', 'staf_lapangan')
+    factory_id = public.user_factory_id()
+    AND public.user_role() IN ('admin_pabrik', 'staf_lapangan')
   );
 
 CREATE POLICY "Super admin full access to outgoing goods"
   ON outgoing_goods FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- REPORTS
@@ -282,20 +282,20 @@ ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Factory users can view own reports"
   ON reports FOR SELECT
   USING (
-    factory_id = auth.user_factory_id()
-    OR auth.is_super_admin()
+    factory_id = public.user_factory_id()
+    OR public.is_super_admin()
   );
 
 CREATE POLICY "Factory admin can create reports"
   ON reports FOR INSERT
   WITH CHECK (
-    factory_id = auth.user_factory_id()
-    AND auth.user_role() IN ('admin_pabrik', 'direktur')
+    factory_id = public.user_factory_id()
+    AND public.user_role() IN ('admin_pabrik', 'direktur')
   );
 
 CREATE POLICY "Super admin can manage reports"
   ON reports FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
 
 -- ============================================================
 -- NOTIFICATIONS
@@ -313,7 +313,7 @@ CREATE POLICY "Users can update own notifications (mark read)"
 
 CREATE POLICY "System and super admin can insert notifications"
   ON notifications FOR INSERT
-  WITH CHECK (auth.is_super_admin() OR user_id = auth.uid());
+  WITH CHECK (public.is_super_admin() OR user_id = auth.uid());
 
 -- ============================================================
 -- ARCHIVES
@@ -327,4 +327,4 @@ CREATE POLICY "Authenticated users can view archives"
 
 CREATE POLICY "Super admin can manage archives"
   ON archives FOR ALL
-  USING (auth.is_super_admin());
+  USING (public.is_super_admin());
