@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../main.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -353,7 +354,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       _errorMessage = null;
     });
 
-    final auth = AuthProviderScope.of(context);
+    final auth = context.read<AuthProvider>();
     final success = await auth.login(email, password);
 
     if (!mounted) return;

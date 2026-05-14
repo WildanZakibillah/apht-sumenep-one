@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
-import '../../main.dart';
+import '../../providers/auth_provider.dart';
 import '../login_screen.dart';
 
 class ProfilView extends StatefulWidget {
@@ -147,7 +148,7 @@ class _ProfilViewState extends State<ProfilView> {
           Expanded(
             child: Builder(
               builder: (context) {
-                final auth = AuthProviderScope.of(context);
+                final auth = context.watch<AuthProvider>();
                 final profile = auth.profile;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,7 +177,7 @@ class _ProfilViewState extends State<ProfilView> {
           ),
           Builder(
             builder: (context) {
-              final auth = AuthProviderScope.of(context);
+              final auth = context.watch<AuthProvider>();
               final roleName = auth.profile != null
                   ? AppConstants.roleDisplayName(auth.profile!.role)
                   : 'User';
@@ -417,7 +418,7 @@ class _ProfilViewState extends State<ProfilView> {
           ? null
           : () async {
               setState(() => _isLoggingOut = true);
-              final auth = AuthProviderScope.of(context);
+              final auth = context.read<AuthProvider>();
               await auth.logout();
               if (!mounted) return;
               Navigator.pushAndRemoveUntil(

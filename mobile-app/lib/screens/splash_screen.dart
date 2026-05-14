@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../core/supabase_client.dart';
+import '../providers/auth_provider.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
 
@@ -59,8 +61,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   /// Check auth state and navigate accordingly.
-  void _navigateNext() {
+  void _navigateNext() async {
     final isLoggedIn = SupabaseConfig.isAuthenticated;
+
+    if (isLoggedIn) {
+      // Ensure profile is fully loaded before navigating
+      final auth = context.read<AuthProvider>();
+      await auth.ensureProfileLoaded();
+    }
+
+    if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

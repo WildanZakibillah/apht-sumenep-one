@@ -25,6 +25,8 @@ class AuthProvider extends ChangeNotifier {
   String get userRole => _profile?.role ?? '';
   String get userEmail => _profile?.email ?? '';
 
+  Completer<void>? _profileCompleter;
+
   // ---------- Initialization ----------
   void _init() {
     _authSubscription = AuthService.onAuthStateChange.listen((authState) {
@@ -45,11 +47,22 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _loadProfile() async {
+    _profileCompleter = Completer<void>();
     try {
       _profile = await AuthService.getCurrentProfile();
       notifyListeners();
     } catch (e) {
       debugPrint('AuthProvider: Failed to load profile: $e');
+    } finally {
+      _profileCompleter?.complete();
+    }
+  }
+
+  /// Wait until the profile has been loaded (useful on app startup).
+  Future<void> ensureProfileLoaded() async {
+    if (_profile != null) return;
+    if (_profileCompleter != null && !_profileCompleter!.isCompleted) {
+      await _profileCompleter!.future;
     }
   }
 
