@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../activity_detail_screen.dart';
+import '../notification_screen.dart';
 
 class HomeView extends StatelessWidget {
   final VoidCallback? onNavigateToHistory;
@@ -116,7 +118,12 @@ class HomeView extends StatelessWidget {
             ],
           ),
           child: IconButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const NotificationScreen()),
+              );
+            },
             icon: Icon(
               Icons.notifications_none_rounded,
               color: AppTheme.primary,
@@ -457,6 +464,7 @@ class HomeView extends StatelessWidget {
           time: '09:12',
           icon: Icons.outbox_rounded,
           color: const Color(0xFF10B981),
+          context: context,
         ),
 
         const SizedBox(height: 12),
@@ -468,6 +476,7 @@ class HomeView extends StatelessWidget {
           time: '08:45',
           icon: Icons.inventory_rounded,
           color: const Color(0xFFF59E0B),
+          context: context,
         ),
       ],
     );
@@ -480,18 +489,45 @@ class HomeView extends StatelessWidget {
     required String time,
     required IconData icon,
     required Color color,
+    required BuildContext context,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ActivityDetailScreen(
+                title: title,
+                subtitle: subtitle,
+                amount: title.contains('Keluar') ? '50 Unit' : '200 Lembar',
+                status: title.contains('Keluar') ? 'Keluar' : 'Cukai',
+                date: time,
+                icon: icon,
+                color: color,
+                details: const {
+                  'No. Referensi': 'REF-20260514-001',
+                  'Penanggung Jawab': 'Budi Santoso',
+                  'Gudang Asal': 'Gudang 1',
+                  'Keterangan Tambahan': 'Proses diselesaikan otomatis melalui sistem terpadu APHT Sumenep One.',
+                },
+              ),
+            ),
+          );
+        },
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.04)
-              : Colors.black.withValues(alpha: 0.03),
-        ),
-      ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.black.withValues(alpha: 0.03),
+            ),
+          ),
       child: Row(
         children: [
           Container(
@@ -548,6 +584,8 @@ class HomeView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+        ),
       ),
     );
   }

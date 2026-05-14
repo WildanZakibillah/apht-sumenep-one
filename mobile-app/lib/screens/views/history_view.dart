@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../activity_detail_screen.dart';
 
 class HistoryView extends StatelessWidget {
   const HistoryView({super.key});
@@ -22,44 +23,48 @@ class HistoryView extends StatelessWidget {
               SizedBox(height: 24),
               _buildActivityCard(
                 isDark: isDark,
-                icon: Icons.shopping_cart_outlined,
-                iconColor: AppTheme.error,
                 title: 'UD Sejahtera',
-                value: 'Rp 21.000.000',
                 date: '2026-01-06',
+                value: 'Rp 21.000.000',
                 statusText: 'Keluar',
-              ),
-              SizedBox(height: 16),
-              _buildActivityCard(
-                isDark: isDark,
                 icon: Icons.shopping_cart_outlined,
                 iconColor: AppTheme.error,
-                title: 'CV Maju Jaya',
-                value: 'Rp 15.000.000',
-                date: '2026-01-06',
-                statusText: 'Keluar',
+                context: context,
               ),
               SizedBox(height: 16),
               _buildActivityCard(
                 isDark: isDark,
-                icon: Icons.confirmation_number_outlined,
-                iconColor: AppTheme.tertiary,
+                title: 'CV Maju Jaya',
+                date: '2026-01-06',
+                value: 'Rp 15.000.000',
+                statusText: 'Keluar',
+                icon: Icons.shopping_cart_outlined,
+                iconColor: AppTheme.error,
+                context: context,
+              ),
+              SizedBox(height: 16),
+              _buildActivityCard(
+                isDark: isDark,
                 title: 'Pemakaian Cukai',
+                date: '2026-01-05',
                 value: '-1.200 Pita',
                 valueColor: AppTheme.error,
-                date: '2026-01-05',
                 statusText: 'Cukai',
+                icon: Icons.confirmation_number_outlined,
+                iconColor: AppTheme.tertiary,
+                context: context,
               ),
               SizedBox(height: 16),
               _buildActivityCard(
                 isDark: isDark,
-                icon: Icons.inventory_2_outlined,
-                iconColor: const Color(0xFF10B981),
                 title: 'Produksi Batch A',
+                date: '2026-01-04',
                 value: '+5.000 Box',
                 valueColor: const Color(0xFF10B981),
-                date: '2026-01-04',
                 statusText: 'Produksi',
+                icon: Icons.inventory_2_outlined,
+                iconColor: const Color(0xFF10B981),
+                context: context,
               ),
               SizedBox(height: 80), // Padding for Bottom Navigation
             ],
@@ -143,88 +148,116 @@ class HistoryView extends StatelessWidget {
     required String statusText,
     required IconData icon,
     required Color iconColor,
+    required BuildContext context,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.04)
-              : Colors.black.withValues(alpha: 0.03),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ActivityDetailScreen(
+                title: title,
+                subtitle: '$statusText • $date',
+                amount: value,
+                status: statusText,
+                date: date,
+                icon: icon,
+                color: iconColor,
+                details: const {
+                  'No. Transaksi': 'TRX-99812-2026',
+                  'Operator': 'Budi Santoso',
+                  'Keterangan': 'Transaksi riwayat diselesaikan dengan status sukses.',
+                },
+              ),
             ),
-            child: Icon(icon, color: iconColor, size: 22),
+          );
+        },
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : Colors.black.withValues(alpha: 0.03),
+            ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : AppTheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : AppTheme.onSurface,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        const SizedBox(width: 8),
+                        Text(
+                          value,
+                          style: TextStyle(
+                            color: valueColor ?? (isDark ? Colors.white : AppTheme.onSurface),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 4),
                     Text(
-                      value,
+                      date,
                       style: TextStyle(
-                        color: valueColor ?? (isDark ? Colors.white : AppTheme.onSurface),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                        color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant,
+                        fontSize: 12,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  date,
+              ),
+              const SizedBox(width: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFF5F7FB),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  statusText,
                   style: TextStyle(
-                    color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant,
-                    fontSize: 12,
+                    color: iconColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF334155) : const Color(0xFFF5F7FB),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: iconColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

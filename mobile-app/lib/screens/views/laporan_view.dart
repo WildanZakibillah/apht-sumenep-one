@@ -332,8 +332,6 @@ class _LaporanViewState extends State<LaporanView> {
         const SizedBox(height: 16),
         _buildReportCard(isDark: isDark, date: '4 NOV 2026', brand: 'SARENITY', type: 'SKM', quantity: '1.200', isi: '16', total: '19.200'),
         const SizedBox(height: 16),
-        _buildReportCard(isDark: isDark, date: '3 NOV 2026', brand: 'SAVOUR', type: 'SKT', quantity: '400', isi: '12', total: '4.800'),
-        const SizedBox(height: 16),
         _buildReportCard(isDark: isDark, date: '3 NOV 2026', brand: 'GALAXY', type: 'SKM', quantity: '850', isi: '20', total: '17.000'),
       ],
     );
