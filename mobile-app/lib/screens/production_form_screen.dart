@@ -11,18 +11,19 @@ class ProductionFormScreen extends StatefulWidget {
 class _ProductionFormScreenState extends State<ProductionFormScreen> {
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF6F8FC);
+
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      // extendBodyBehindAppBar dihapus agar form tidak menabrak AppBar
-      resizeToAvoidBottomInset: false, 
-      appBar: _buildAppBar(context),
+      backgroundColor: bg,
+      resizeToAvoidBottomInset: false,
+      appBar: _buildAppBar(context, bg, isDark),
       body: Stack(
         children: [
-          // 1. Form Content (Scrollable)
           Positioned.fill(
             child: SingleChildScrollView(
               padding: EdgeInsets.only(
-                top: 10, // Jarak disesuaikan karena header statis dihapus
+                top: 10,
                 left: 20,
                 right: 20,
                 bottom: MediaQuery.of(context).viewInsets.bottom + 120,
@@ -30,44 +31,41 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 2. Teks Header dipindah ke sini agar rapi dan ikut ter-scroll
-                  _buildPageHeader(), 
+                  _buildPageHeader(isDark),
                   const SizedBox(height: 24),
-                  _buildFormCard(),
+                  _buildFormCard(isDark),
                   const SizedBox(height: 20),
                   _buildAddButton(),
                 ],
               ),
             ),
           ),
-
-          // 3. Sticky Bottom Action
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: _buildBottomAction(context),
+            child: _buildBottomAction(context, isDark),
           ),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar(BuildContext context, Color bg, bool isDark) {
     return AppBar(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: bg,
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
         onPressed: () => Navigator.pop(context),
-        // Warna icon diubah menjadi gelap karena background tidak lagi ungu
-        icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.onSurface, size: 20),
+        icon: Icon(Icons.arrow_back_ios_new_rounded,
+            color: isDark ? Colors.white : AppTheme.onSurface, size: 20),
       ),
       centerTitle: true,
       title: Text(
         'Form Produksi',
         style: TextStyle(
-          color: AppTheme.onSurface,
+          color: isDark ? Colors.white : AppTheme.onSurface,
           fontSize: 18,
           fontWeight: FontWeight.bold,
           letterSpacing: 0.5,
@@ -76,15 +74,14 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     );
   }
 
-  // Widget baru untuk merapikan judul halaman
-  Widget _buildPageHeader() {
+  Widget _buildPageHeader(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Input Produksi Massal',
           style: TextStyle(
-            color: AppTheme.onSurface,
+            color: isDark ? Colors.white : AppTheme.onSurface,
             fontSize: 26,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.5,
@@ -95,7 +92,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         Text(
           'Isi data produksi untuk dicatat ke dalam sistem',
           style: TextStyle(
-            color: AppTheme.onSurfaceVariant, // Menggunakan warna teks sekunder
+            color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
             fontSize: 14,
           ),
         ),
@@ -103,14 +100,14 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     );
   }
 
-  Widget _buildBottomAction(BuildContext context) {
+  Widget _buildBottomAction(BuildContext context, bool isDark) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
             offset: const Offset(0, -4),
             blurRadius: 16,
           ),
@@ -127,32 +124,32 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
           backgroundColor: AppTheme.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
         child: const Text(
           'Simpan Data Produksi',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ),
     );
   }
 
-  Widget _buildFormCard() {
+  Widget _buildFormCard(bool isDark) {
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBorder = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : AppTheme.outlineVariant.withValues(alpha: 0.5);
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.outlineVariant.withValues(alpha: 0.5)),
-        boxShadow: const [
+        border: Border.all(color: cardBorder),
+        boxShadow: [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.03),
-            offset: Offset(0, 6),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            offset: const Offset(0, 6),
             blurRadius: 20,
           ),
         ],
@@ -173,11 +170,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                         color: AppTheme.primary,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(
-                        Icons.inventory_2_outlined,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                      child: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 18),
                     ),
                     const SizedBox(width: 10),
                     Column(
@@ -186,7 +179,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                         Text(
                           'Data Produksi',
                           style: TextStyle(
-                            color: AppTheme.onSurface,
+                            color: isDark ? Colors.white : AppTheme.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
@@ -194,7 +187,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                         Text(
                           'Entri #1',
                           style: TextStyle(
-                            color: AppTheme.outline,
+                            color: isDark ? Colors.white38 : AppTheme.outline,
                             fontSize: 12,
                           ),
                         ),
@@ -211,16 +204,14 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
               ],
             ),
           ),
 
-          Divider(height: 1, color: AppTheme.outlineVariant.withValues(alpha: 0.4)),
+          Divider(height: 1, color: isDark ? Colors.white12 : AppTheme.outlineVariant.withValues(alpha: 0.4)),
 
           // Form Body
           Padding(
@@ -228,119 +219,49 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Row 1 — Dokumen & Tanggal
                 Row(
                   children: [
-                    Expanded(
-                      child: _buildInputField(
-                        label: 'No. Dokumen',
-                        hintText: '0001/GPM/IV/2026',
-                      ),
-                    ),
+                    Expanded(child: _buildInputField(isDark: isDark, label: 'No. Dokumen', hintText: '0001/GPM/IV/2026')),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildInputField(
-                        label: 'Tanggal Dokumen',
-                        hintText: 'yyyy-mm-dd',
-                        suffixIcon: Icons.calendar_today_outlined,
-                      ),
-                    ),
+                    Expanded(child: _buildInputField(isDark: isDark, label: 'Tanggal Dokumen', hintText: 'yyyy-mm-dd', suffixIcon: Icons.calendar_today_outlined)),
                   ],
                 ),
                 const SizedBox(height: 16),
-
-                // Section label
                 _buildSectionLabel('Identitas Produk'),
                 const SizedBox(height: 12),
-
-                // Row 2a — Jenis & Merek (2 cols)
                 Row(
                   children: [
-                    Expanded(
-                      child: _buildDropdownField(
-                        label: 'Jenis',
-                        value: 'SKT',
-                        items: ['SKT', 'SKM', 'SPM'],
-                      ),
-                    ),
+                    Expanded(child: _buildDropdownField(isDark: isDark, label: 'Jenis', value: 'SKT', items: ['SKT', 'SKM', 'SPM'])),
                     const SizedBox(width: 16),
-                    Expanded(
-                      flex: 2,
-                      child: _buildInputField(
-                        label: 'Merek',
-                        initialValue: 'DEN HAAG',
-                      ),
-                    ),
+                    Expanded(flex: 2, child: _buildInputField(isDark: isDark, label: 'Merek', initialValue: 'DEN HAAG')),
                   ],
                 ),
                 const SizedBox(height: 12),
-
-                // Row 2b — HJE (full width to avoid overflow)
-                _buildInputField(
-                  label: 'HJE (Rp)',
-                  initialValue: '10.325',
-                  keyboardType: TextInputType.number,
-                  prefixText: 'Rp ',
-                ),
+                _buildInputField(isDark: isDark, label: 'HJE (Rp)', initialValue: '10.325', keyboardType: TextInputType.number, prefixText: 'Rp '),
                 const SizedBox(height: 16),
-
-                // Section label
                 _buildSectionLabel('Detail Kemasan'),
                 const SizedBox(height: 12),
-
-                // Row 3a — Bahan Kemasan & Isi
                 Row(
                   children: [
-                    Expanded(
-                      flex: 2,
-                      child: _buildInputField(
-                        label: 'Bahan Kemasan',
-                        initialValue: 'Kertas dan Sejenisnya',
-                      ),
-                    ),
+                    Expanded(flex: 2, child: _buildInputField(isDark: isDark, label: 'Bahan Kemasan', initialValue: 'Kertas dan Sejenisnya')),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildInputField(
-                        label: 'Isi',
-                        initialValue: '12',
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
+                    Expanded(child: _buildInputField(isDark: isDark, label: 'Isi', initialValue: '12', keyboardType: TextInputType.number)),
                   ],
                 ),
                 const SizedBox(height: 12),
-
-                // Row 3b — Satuan & Jumlah Kemasan
                 Row(
                   children: [
-                    Expanded(
-                      child: _buildInputField(
-                        label: 'Satuan',
-                        initialValue: 'btg',
-                      ),
-                    ),
+                    Expanded(child: _buildInputField(isDark: isDark, label: 'Satuan', initialValue: 'btg')),
                     const SizedBox(width: 16),
-                    Expanded(
-                      flex: 2,
-                      child: _buildInputField(
-                        label: 'Jumlah Kemasan',
-                        initialValue: '3.278',
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
+                    Expanded(flex: 2, child: _buildInputField(isDark: isDark, label: 'Jumlah Kemasan', initialValue: '3.278', keyboardType: TextInputType.number)),
                   ],
                 ),
-
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Divider(
-                    height: 1,
-                    color: AppTheme.outlineVariant.withValues(alpha: 0.4),
-                  ),
+                  child: Divider(height: 1, color: isDark ? Colors.white12 : AppTheme.outlineVariant.withValues(alpha: 0.4)),
                 ),
-
-                // Computed Result
                 _buildComputedField(
+                  isDark: isDark,
                   label: 'Jumlah Isi (Isi × Jml Kemasan)',
                   value: '39.336',
                   backgroundColor: AppTheme.primaryFixed.withValues(alpha: 0.35),
@@ -362,26 +283,19 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         Container(
           width: 3,
           height: 14,
-          decoration: BoxDecoration(
-            color: AppTheme.primary,
-            borderRadius: BorderRadius.circular(2),
-          ),
+          decoration: BoxDecoration(color: AppTheme.primary, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 8),
         Text(
           label,
-          style: TextStyle(
-            color: AppTheme.primary,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
+          style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5),
         ),
       ],
     );
   }
 
   Widget _buildInputField({
+    required bool isDark,
     required String label,
     String? hintText,
     String? initialValue,
@@ -389,53 +303,30 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     IconData? suffixIcon,
     TextInputType? keyboardType,
   }) {
+    final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: AppTheme.onSurfaceVariant,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextFormField(
           initialValue: initialValue,
           keyboardType: keyboardType,
-          style: TextStyle(
-            color: AppTheme.onSurface,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
+          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
             hintText: hintText,
             prefixText: prefixText,
-            prefixStyle: TextStyle(
-              color: AppTheme.outline,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-            hintStyle: TextStyle(color: AppTheme.outline),
+            prefixStyle: TextStyle(color: isDark ? Colors.white54 : AppTheme.outline, fontSize: 14, fontWeight: FontWeight.w500),
+            hintStyle: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline),
             filled: true,
-            fillColor: AppTheme.surfaceContainerLow.withValues(alpha: 0.5),
+            fillColor: fillColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.outlineVariant),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primary, width: 2),
-            ),
-            suffixIcon: suffixIcon != null
-                ? Icon(suffixIcon, color: AppTheme.outline, size: 18)
-                : null,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
+            suffixIcon: suffixIcon != null ? Icon(suffixIcon, color: isDark ? Colors.white38 : AppTheme.outline, size: 18) : null,
           ),
         ),
       ],
@@ -443,54 +334,34 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   }
 
   Widget _buildDropdownField({
+    required bool isDark,
     required String label,
     required String value,
     required List<String> items,
   }) {
+    final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: AppTheme.onSurfaceVariant,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           value: value,
           isExpanded: true,
-          items: items.map((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          items: items.map((String item) => DropdownMenuItem<String>(value: item, child: Text(item))).toList(),
           onChanged: (String? newValue) {},
-          style: TextStyle(
-            color: AppTheme.onSurface,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-          icon: Icon(Icons.keyboard_arrow_down, color: AppTheme.outline),
+          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+          icon: Icon(Icons.keyboard_arrow_down, color: isDark ? Colors.white38 : AppTheme.outline),
           decoration: InputDecoration(
             filled: true,
-            fillColor: AppTheme.surfaceContainerLow.withValues(alpha: 0.5),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.outlineVariant),
-            ),
+            fillColor: fillColor,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primary, width: 2),
-            ),
           ),
         ),
       ],
@@ -498,6 +369,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   }
 
   Widget _buildComputedField({
+    required bool isDark,
     required String label,
     required String value,
     required Color backgroundColor,
@@ -508,14 +380,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: labelColor,
-            fontSize: 13,
-            fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w600,
-          ),
-        ),
+        Text(label, style: TextStyle(color: labelColor, fontSize: 13, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w600)),
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
@@ -528,23 +393,8 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              Text(
-                'btg',
-                style: TextStyle(
-                  color: textColor.withValues(alpha: 0.6),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text(value, style: TextStyle(color: textColor, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+              Text('btg', style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 14, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -562,14 +412,8 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
         padding: const EdgeInsets.symmetric(vertical: 18),
         backgroundColor: AppTheme.surfaceContainerLowest,
         side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5), width: 1.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.5),
       ).copyWith(
         side: WidgetStateProperty.resolveWith<BorderSide>((states) {
           if (states.contains(WidgetState.hovered) || states.contains(WidgetState.pressed)) {

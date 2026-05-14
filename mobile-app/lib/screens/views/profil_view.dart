@@ -7,23 +7,37 @@ class ProfilView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF6F8FC);
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final cardBorder = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.black.withValues(alpha: 0.03);
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : AppTheme.outlineVariant;
+
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: _buildAppBar(),
+      backgroundColor: bg,
+      appBar: _buildAppBar(bg, isDark),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildUserCard(),
+              _buildUserCard(isDark, cardBg, cardBorder),
               const SizedBox(height: 24),
-              _buildInformasiGudang(),
+              _buildSectionLabel('INFORMASI GUDANG', isDark),
+              const SizedBox(height: 8),
+              _buildInfoCard(isDark, cardBg, cardBorder, dividerColor),
               const SizedBox(height: 24),
-              _buildPreferensi(context),
+              _buildSectionLabel('PREFERENSI', isDark),
+              const SizedBox(height: 8),
+              _buildPreferensiCard(context, isDark, cardBg, cardBorder, dividerColor),
               const SizedBox(height: 24),
               _buildLogoutButton(context),
-              SizedBox(height: 80), // Padding for Bottom Navigation
+              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -31,9 +45,9 @@ class ProfilView extends StatelessWidget {
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(Color bg, bool isDark) {
     return AppBar(
-      backgroundColor: AppTheme.surface,
+      backgroundColor: bg,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
@@ -52,8 +66,8 @@ class ProfilView extends StatelessWidget {
           Text(
             'Pengaturan Sistem & Akun',
             style: TextStyle(
-              color: AppTheme.onSurfaceVariant,
-              fontSize: 14,
+              color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
+              fontSize: 13,
               fontWeight: FontWeight.normal,
             ),
           ),
@@ -61,23 +75,41 @@ class ProfilView extends StatelessWidget {
       ),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(color: AppTheme.outlineVariant.withValues(alpha: 0.3), height: 1),
+        child: Container(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.07)
+              : AppTheme.outlineVariant.withValues(alpha: 0.3),
+          height: 1,
+        ),
       ),
     );
   }
 
-  Widget _buildUserCard() {
+  Widget _buildSectionLabel(String text, bool isDark) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: isDark ? Colors.white38 : AppTheme.onSurfaceVariant,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.0,
+      ),
+    );
+  }
+
+  Widget _buildUserCard(bool isDark, Color cardBg, Color cardBorder) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [
+        color: cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.05),
-            offset: Offset(0, 4),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+            offset: const Offset(0, 4),
             blurRadius: 20,
-          )
+          ),
         ],
       ),
       child: Row(
@@ -86,117 +118,139 @@ class ProfilView extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: AppTheme.surfaceContainer,
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primary,
+                  AppTheme.primary.withValues(alpha: 0.7),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.primaryFixedDim, width: 2),
             ),
-            child: Icon(
-              Icons.account_circle,
-              size: 60,
-              color: AppTheme.primary,
+            child: const Icon(
+              Icons.person_rounded,
+              size: 34,
+              color: Colors.white,
             ),
           ),
-          SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Budi Santoso',
-                style: TextStyle(
-                  color: AppTheme.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Budi Santoso',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : AppTheme.onSurface,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                  ),
                 ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Admin Utama Gudang',
-                style: TextStyle(
-                  color: AppTheme.onSurfaceVariant,
-                  fontSize: 14,
+                const SizedBox(height: 4),
+                Text(
+                  'Admin Utama Gudang',
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
                 ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              'Admin',
+              style: TextStyle(
+                color: AppTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInformasiGudang() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'INFORMASI GUDANG',
-          style: TextStyle(
-            color: AppTheme.onSurfaceVariant,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
+  Widget _buildInfoCard(bool isDark, Color cardBg, Color cardBorder, Color divider) {
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 20,
           ),
-        ),
-        SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.05),
-                offset: Offset(0, 4),
-                blurRadius: 20,
-              )
-            ],
-          ),
-          child: Column(
-            children: [
-              _buildInfoRow('Lokasi Gudang', 'Gudang 1', true),
-              _buildInfoRow('Alamat', 'Jl. Industri Raya 45', true),
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Status Sistem',
-                      style: TextStyle(
-                        color: AppTheme.onSurface,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppTheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                      child: Text(
-                        'Aktif',
-                        style: TextStyle(
-                          color: AppTheme.onSecondaryContainer,
-                          fontSize: 14,
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildInfoRow('Lokasi Gudang', 'Gudang 1', isDark, divider, hasBorder: true),
+          _buildInfoRow('Alamat', 'Jl. Industri Raya 45', isDark, divider, hasBorder: true),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Status Sistem',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : AppTheme.onSurface,
+                    fontSize: 15,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondaryContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: AppTheme.secondary,
+                          shape: BoxShape.circle,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        'Aktif',
+                        style: TextStyle(
+                          color: AppTheme.secondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, bool showBorder) {
+  Widget _buildInfoRow(String label, String value, bool isDark, Color divider, {bool hasBorder = false}) {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
-        border: showBorder
-            ? Border(bottom: BorderSide(color: AppTheme.outlineVariant))
-            : null,
+        border: hasBorder ? Border(bottom: BorderSide(color: divider)) : null,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -204,16 +258,16 @@ class ProfilView extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: AppTheme.onSurface,
-              fontSize: 16,
+              color: isDark ? Colors.white70 : AppTheme.onSurface,
+              fontSize: 15,
             ),
           ),
           Text(
             value,
             style: TextStyle(
-              color: AppTheme.onSurfaceVariant,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -221,106 +275,113 @@ class ProfilView extends StatelessWidget {
     );
   }
 
-  Widget _buildPreferensi(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'PREFERENSI',
-          style: TextStyle(
-            color: AppTheme.onSurfaceVariant,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
+  Widget _buildPreferensiCard(BuildContext context, bool isDark, Color cardBg, Color cardBorder, Color divider) {
+    return Container(
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 20,
           ),
-        ),
-        SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: const [
-              BoxShadow(
-                color: Color.fromRGBO(0, 0, 0, 0.05),
-                offset: Offset(0, 4),
-                blurRadius: 20,
-              )
-            ],
-          ),
-          child: Column(
-            children: [
-              _buildPrefRow('Pengaturan Akun', true),
-              _buildPrefRow('Pusat Bantuan', true),
-              _buildThemeToggleRow(context, false),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildPrefRow('Pengaturan Akun', Icons.manage_accounts_outlined, isDark, divider, hasBorder: true),
+          _buildPrefRow('Pusat Bantuan', Icons.help_outline_rounded, isDark, divider, hasBorder: true),
+          _buildThemeToggleRow(context, isDark),
+        ],
+      ),
     );
   }
 
-  Widget _buildThemeToggleRow(BuildContext context, bool showBorder) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        border: showBorder
-            ? Border(bottom: BorderSide(color: AppTheme.outlineVariant))
-            : null,
-      ),
+  Widget _buildThemeToggleRow(BuildContext context, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
-              Icon(
-                AppTheme.isDarkMode.value ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                color: AppTheme.primary,
-                size: 22,
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  color: AppTheme.primary,
+                  size: 20,
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Text(
-                'Mode Gelap',
+                isDark ? 'Mode Gelap' : 'Mode Terang',
                 style: TextStyle(
-                  color: AppTheme.onSurface,
-                  fontSize: 16,
+                  color: isDark ? Colors.white : AppTheme.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
           Switch(
             value: AppTheme.isDarkMode.value,
-            onChanged: (val) {
-              AppTheme.toggleTheme(context);
+            onChanged: (val) async {
+              await AppTheme.toggleTheme(context);
             },
-            activeThumbColor: AppTheme.primary,
-            activeTrackColor: AppTheme.primaryFixedDim,
+            activeThumbColor: Colors.white,
+            activeTrackColor: AppTheme.primary,
+            inactiveThumbColor: Colors.white,
+            inactiveTrackColor: isDark ? Colors.white12 : Colors.black12,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPrefRow(String title, bool showBorder) {
+  Widget _buildPrefRow(String title, IconData icon, bool isDark, Color divider, {bool hasBorder = false}) {
     return InkWell(
       onTap: () {},
+      borderRadius: hasBorder ? null : BorderRadius.circular(20),
       child: Container(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          border: showBorder
-              ? Border(bottom: BorderSide(color: AppTheme.outlineVariant))
-              : null,
+          border: hasBorder ? Border(bottom: BorderSide(color: divider)) : null,
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                color: AppTheme.onSurface,
-                fontSize: 16,
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: AppTheme.primary, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: isDark ? Colors.white : AppTheme.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-            Icon(Icons.chevron_right, color: AppTheme.outline),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? Colors.white38 : AppTheme.outline,
+              size: 22,
+            ),
           ],
         ),
       ),
@@ -328,35 +389,25 @@ class ProfilView extends StatelessWidget {
   }
 
   Widget _buildLogoutButton(BuildContext context) {
-    return OutlinedButton(
+    return OutlinedButton.icon(
       onPressed: () {
-        // Implement logout logic, e.g., clear tokens and navigate to LoginScreen
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
         );
       },
+      icon: const Icon(Icons.logout_rounded, size: 20),
+      label: const Text(
+        'Keluar Aplikasi',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+      ),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.error,
-        side: BorderSide(color: AppTheme.error, width: 2),
+        side: BorderSide(color: AppTheme.error.withValues(alpha: 0.5), width: 1.5),
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
         ),
-      ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.logout),
-          SizedBox(width: 8),
-          Text(
-            'Keluar Aplikasi',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
       ),
     );
   }
