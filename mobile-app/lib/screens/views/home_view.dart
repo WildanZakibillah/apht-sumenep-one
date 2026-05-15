@@ -83,11 +83,12 @@ class _HomeViewState extends State<HomeView> {
         totalKeluar += (r['volume'] as int?) ?? 0;
       }
 
-      // Total pengeluaran cukai (tarif_cukai * jumlah_lembar from cukai_requests approved)
+      // Total pengeluaran cukai (tarif_cukai * jumlah_lembar from cukai_requests APPROVED only)
       final cukaiReqRes = await client
           .from('cukai_requests')
           .select('tarif_cukai, jumlah_lembar')
           .eq('factory_id', factoryId)
+          .eq('status', 'approved')
           .gte('request_date', startOfMonth);
       num totalPengeluaranCukai = 0;
       for (final r in cukaiReqRes) {

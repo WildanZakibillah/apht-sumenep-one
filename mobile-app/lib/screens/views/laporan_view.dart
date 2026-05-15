@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/report_pdf_service.dart';
+import '../activity_detail_screen.dart';
 
 class LaporanView extends StatefulWidget {
   const LaporanView({super.key});
@@ -356,20 +357,55 @@ class _LaporanViewState extends State<LaporanView> {
 
   Widget _buildProdCard(bool isDark, Map<String, dynamic> p) {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(p['merek'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text('${p['jenis']} • Isi: ${p['isi']} ${p['satuan']}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 13)),
-        ]),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(NumberFormat('#,###').format(p['jumlah_kemasan']), style: TextStyle(color: AppTheme.primary, fontSize: 20, fontWeight: FontWeight.w800)),
-          Text('kemasan', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline, fontSize: 11)),
-        ]),
-      ]),
+    final hje = (p['hje'] as num?) ?? 0;
+    final jumlahIsi = (p['jumlah_isi'] as int?) ?? 0;
+    final totalNilai = hje * jumlahIsi;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ActivityDetailScreen(
+            title: 'Produksi ${p['merek']} (${p['jenis']})',
+            subtitle: 'No. ${p['doc_number']}',
+            amount: '${NumberFormat('#,###').format(jumlahIsi)} ${p['satuan']}',
+            status: 'Produksi',
+            date: p['doc_date'] ?? '-',
+            icon: Icons.inventory_2_outlined,
+            color: const Color(0xFF10B981),
+            details: {
+              'No. Dokumen': p['doc_number'] ?? '-',
+              'Tanggal': p['doc_date'] ?? '-',
+              'Merek': p['merek'] ?? '-',
+              'Jenis': p['jenis'] ?? '-',
+              'HJE': 'Rp ${NumberFormat('#,###').format(hje)}',
+              'Bahan Kemasan': p['bahan_kemasan'] ?? '-',
+              'Isi': '${p['isi']} ${p['satuan']}',
+              'Jumlah Kemasan': NumberFormat('#,###').format(p['jumlah_kemasan']),
+              'Jumlah Isi': '${NumberFormat('#,###').format(jumlahIsi)} ${p['satuan']}',
+              'Total Nilai Produksi': 'Rp ${NumberFormat('#,###').format(totalNilai)}',
+            },
+          )));
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p['merek'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text('${p['jenis']} • Isi: ${p['isi']} ${p['satuan']} • ${p['doc_date'] ?? ''}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
+            ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(NumberFormat('#,###').format(p['jumlah_kemasan']), style: TextStyle(color: AppTheme.primary, fontSize: 20, fontWeight: FontWeight.w800)),
+              Text('kemasan', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline, fontSize: 11)),
+            ]),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 18),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -399,23 +435,48 @@ class _LaporanViewState extends State<LaporanView> {
     final used = u['used_amount'] as int;
     final added = u['added_amount'] as int;
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(u['usage_date'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
-          if (u['notes'] != null) ...[
-            const SizedBox(height: 4),
-            Text(u['notes'], style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
-          ],
-        ]),
-        Row(children: [
-          if (used > 0) Text('-$used', style: TextStyle(color: AppTheme.error, fontSize: 18, fontWeight: FontWeight.w800)),
-          if (used > 0 && added > 0) const SizedBox(width: 12),
-          if (added > 0) Text('+$added', style: TextStyle(color: const Color(0xFF10B981), fontSize: 18, fontWeight: FontWeight.w800)),
-        ]),
-      ]),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ActivityDetailScreen(
+            title: 'Pemakaian Cukai',
+            subtitle: u['notes'] ?? 'Pencatatan pemakaian pita cukai',
+            amount: used > 0 ? '-$used lembar' : '+$added lembar',
+            status: 'Cukai',
+            date: u['usage_date'] ?? '-',
+            icon: Icons.confirmation_number_outlined,
+            color: const Color(0xFF6366F1),
+            details: {
+              'Tanggal': u['usage_date'] ?? '-',
+              'Pemakaian': '$used lembar',
+              'Tambahan': '$added lembar',
+              'Catatan': u['notes'] ?? '-',
+            },
+          )));
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(u['usage_date'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
+              if (u['notes'] != null) ...[
+                const SizedBox(height: 4),
+                Text(u['notes'], style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
+              ],
+            ])),
+            Row(children: [
+              if (used > 0) Text('-$used', style: TextStyle(color: AppTheme.error, fontSize: 18, fontWeight: FontWeight.w800)),
+              if (used > 0 && added > 0) const SizedBox(width: 12),
+              if (added > 0) Text('+$added', style: TextStyle(color: const Color(0xFF10B981), fontSize: 18, fontWeight: FontWeight.w800)),
+            ]),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 18),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -444,27 +505,55 @@ class _LaporanViewState extends State<LaporanView> {
   Widget _buildOutgoingCard(bool isDark, Map<String, dynamic> o) {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final isKredit = o['payment_method'] == 'kredit';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(o['customer_name'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: isKredit ? AppTheme.secondaryContainer : AppTheme.tertiaryContainer, borderRadius: BorderRadius.circular(20)),
-            child: Text(isKredit ? 'KREDIT' : 'TUNAI', style: TextStyle(color: isKredit ? AppTheme.onSecondaryContainer : AppTheme.onTertiaryContainer, fontSize: 10, fontWeight: FontWeight.w800)),
-          ),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          Text('${o['transaction_date']}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
-          const SizedBox(width: 16),
-          Text('${NumberFormat('#,###').format(o['volume'])} btg', style: TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Text('Rp ${NumberFormat('#,###').format(o['total_value'])}', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
-        ]),
-      ]),
+    final totalValue = (o['total_value'] as num?) ?? 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ActivityDetailScreen(
+            title: 'Keluar → ${o['customer_name']}',
+            subtitle: '${o['transaction_date']}',
+            amount: '${NumberFormat('#,###').format(o['volume'])} btg',
+            status: 'Keluar',
+            date: o['transaction_date'] ?? '-',
+            icon: Icons.shopping_cart_checkout_outlined,
+            color: AppTheme.error,
+            details: {
+              'Tanggal': o['transaction_date'] ?? '-',
+              'Pelanggan': o['customer_name'] ?? '-',
+              'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
+              'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
+              'Pembayaran': isKredit ? 'KREDIT' : 'TUNAI',
+            },
+          )));
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Expanded(child: Text(o['customer_name'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: isKredit ? AppTheme.secondaryContainer : AppTheme.tertiaryContainer, borderRadius: BorderRadius.circular(20)),
+                child: Text(isKredit ? 'KREDIT' : 'TUNAI', style: TextStyle(color: isKredit ? AppTheme.onSecondaryContainer : AppTheme.onTertiaryContainer, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Text('${o['transaction_date']}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
+              const SizedBox(width: 16),
+              Text('${NumberFormat('#,###').format(o['volume'])} btg', style: TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('Rp ${NumberFormat('#,###').format(totalValue)}', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 18),
+            ]),
+          ]),
+        ),
+      ),
     );
   }
 }

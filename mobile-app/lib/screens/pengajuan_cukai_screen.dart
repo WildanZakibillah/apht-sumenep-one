@@ -34,6 +34,12 @@ class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
   void initState() {
     super.initState();
     _loadProductTypes();
+    _tarifCukaiController.addListener(_onCostFieldChanged);
+    _jumlahLembarController.addListener(_onCostFieldChanged);
+  }
+
+  void _onCostFieldChanged() {
+    setState(() {}); // Rebuild to update total cost display
   }
 
   @override
@@ -51,8 +57,18 @@ class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
   Future<void> _loadProductTypes() async {
     final res = await Supabase.instance.client.from('product_types').select('name, category');
     if (mounted) {
+      // Deduplicate by name
+      final seen = <String>{};
+      final unique = <Map<String, dynamic>>[];
+      for (final item in res) {
+        final name = item['name'] as String;
+        if (!seen.contains(name)) {
+          seen.add(name);
+          unique.add(Map<String, dynamic>.from(item));
+        }
+      }
       setState(() {
-        _productTypes = List<Map<String, dynamic>>.from(res);
+        _productTypes = unique;
         if (_productTypes.isNotEmpty) {
           _jenisHasilTembakau = _productTypes.first['name'] as String;
         }
@@ -182,6 +198,8 @@ class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
                 const SizedBox(width: 16),
                 Expanded(child: _buildInput(isDark: isDark, label: 'Jumlah Lembar', controller: _jumlahLembarController, keyboardType: TextInputType.number)),
               ]),
+              const SizedBox(height: 16),
+              _buildTotalCostDisplay(isDark),
             ])),
             const SizedBox(height: 16),
             Container(
@@ -288,6 +306,36 @@ class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
         ),
       ),
     ]);
+  }
+
+  Widget _buildTotalCostDisplay(bool isDark) {
+    final tarif = double.tryParse(_tarifCukaiController.text.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
+    final lembar = int.tryParse(_jumlahLembarController.text) ?? 0;
+    final totalCost = tarif * lembar;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: totalCost > 0
+            ? AppTheme.primary.withValues(alpha: 0.08)
+            : (isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: totalCost > 0 ? AppTheme.primary.withValues(alpha: 0.3) : Colors.transparent),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Total Biaya Penebusan Cukai', style: TextStyle(color: totalCost > 0 ? AppTheme.primary : (isDark ? Colors.white54 : AppTheme.onSurfaceVariant), fontSize: 12, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(
+          totalCost > 0 ? 'Rp ${NumberFormat('#,###').format(totalCost)}' : 'Rp 0',
+          style: TextStyle(color: totalCost > 0 ? AppTheme.primary : (isDark ? Colors.white38 : AppTheme.outline), fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+        ),
+        if (totalCost > 0) ...[
+          const SizedBox(height: 4),
+          Text('${NumberFormat('#,###').format(lembar)} lembar × Rp ${NumberFormat('#,###').format(tarif)}/lembar', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
+        ],
+      ]),
+    );
   }
 
   Widget _buildBottomAction(BuildContext context, bool isDark) {

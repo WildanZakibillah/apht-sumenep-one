@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -76,11 +75,6 @@ class ActivityDetailScreen extends StatelessWidget {
     return pdf.save();
   }
 
-  Future<void> _download(BuildContext context) async {
-    final pdfBytes = await _generateDetailPdf();
-    await Printing.layoutPdf(onLayout: (_) => pdfBytes);
-  }
-
   Future<void> _share(BuildContext context) async {
     final pdfBytes = await _generateDetailPdf();
     final dir = await getTemporaryDirectory();
@@ -123,40 +117,7 @@ class ActivityDetailScreen extends StatelessWidget {
           children: [
             _buildHeroSection(isDark),
             Padding(padding: const EdgeInsets.all(20), child: _buildDetailsCard(isDark)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-              child: Row(children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _download(context),
-                    icon: const Icon(Icons.download_rounded, size: 18),
-                    label: const Text('Download'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      foregroundColor: AppTheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 16), elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: isDark ? Colors.white12 : AppTheme.outlineVariant.withValues(alpha: 0.5))),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _share(context),
-                    icon: const Icon(Icons.share_rounded, size: 18),
-                    label: const Text('Share'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16), elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              ]),
-            ),
+            const SizedBox(height: 40),
           ],
         ),
       ),

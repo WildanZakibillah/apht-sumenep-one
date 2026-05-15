@@ -42,13 +42,36 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
     final factoryId = auth.profile?.factoryId;
     if (factoryId == null) return;
 
-    final res = await Supabase.instance.client
+    var res = await Supabase.instance.client
         .from('cukai_allocations')
         .select()
         .eq('factory_id', factoryId)
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
+
+    // Auto-create allocation if none exists
+    if (res == null) {
+      try {
+        final now = DateTime.now();
+        final period = 'Q${((now.month - 1) ~/ 3) + 1}-${now.year}';
+        final newAlloc = await Supabase.instance.client
+            .from('cukai_allocations')
+            .insert({
+              'factory_id': factoryId,
+              'quota': 50000,
+              'used': 0,
+              'damaged': 0,
+              'period': period,
+            })
+            .select()
+            .single();
+        res = newAlloc;
+      } catch (_) {
+        // RLS may block insert - allocation must be created by super_admin
+        // Show helpful message
+      }
+    }
 
     if (mounted) setState(() => _allocation = res);
   }
