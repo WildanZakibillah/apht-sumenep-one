@@ -40,17 +40,25 @@ export const authService = {
   },
 
   /**
-   * Get user profile from profiles table
+   * Get user profile from profiles table (with timeout)
    */
   async getProfile(userId) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    
-    if (error) throw error;
-    return data;
+    try {
+      // Race between the query and a 2s timeout
+      const result = await Promise.race([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 2000))
+      ]);
+      
+      if (result.error) {
+        console.error('getProfile error:', result.error.message);
+        return null;
+      }
+      return result.data;
+    } catch (err) {
+      console.error('getProfile:', err.message);
+      return null;
+    }
   },
 
   /**

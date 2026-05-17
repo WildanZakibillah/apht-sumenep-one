@@ -1,226 +1,470 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
+import { useTheme } from '../context/ThemeContext';
+import PageHeader from '../components/shared/PageHeader';
+import StatCard from '../components/shared/StatCard';
+import { SkeletonCard, SkeletonTable } from '../components/shared/Skeleton';
+import Modal from '../components/shared/Modal';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
+import SearchBar from '../components/shared/SearchBar';
+import MonthPicker from '../components/shared/MonthPicker';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+const emptyGoodsForm = {
+  transaction_date: new Date().toISOString().slice(0, 10),
+  customer_name: '',
+  region_id: '',
+  product_id: '',
+  factory_id: '',
+  volume: 0,
+  total_value: 0,
+  payment_method: 'tunai',
+};
+
+const emptyDistForm = { name: '', region_id: '', contact_info: '' };
 
 const DataPemasaran = () => {
-  const distributors = [
-    { no: '1', name: 'PT Surya Sakti Raya', region: 'Jawa Timur', volume: '450,000', value: '900,000,000' },
-    { no: '2', name: 'CV Bintang Harapan', region: 'Jawa Tengah', volume: '320,000', value: '640,000,000' },
-    { no: '3', name: 'Maju Jaya Logistik', region: 'DKI Jakarta', volume: '280,000', value: '560,000,000' },
-    { no: '4', name: 'PT Nusantara Distribusi', region: 'Jawa Barat', volume: '210,000', value: '420,000,000' },
-    { no: '5', name: 'Koperasi Sinar Mas', region: 'Bali', volume: '150,000', value: '300,000,000' },
+  const { isDark } = useTheme();
+  const { user, ready } = useAuth();
+  const toast = useToast();
+  const [outgoingGoods, setOutgoingGoods] = useState([]);
+  const [distributors, setDistributors] = useState([]);
+  const [factories, setFactories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+
+  // Goods modal
+  const [showGoodsModal, setShowGoodsModal] = useState(false);
+  const [editingGoods, setEditingGoods] = useState(null);
+  const [goodsForm, setGoodsForm] = useState(emptyGoodsForm);
+  const [savingGoods, setSavingGoods] = useState(false);
+  const [deleteGoodsTarget, setDeleteGoodsTarget] = useState(null);
+
+  // Distributor modal
+  const [showDistModal, setShowDistModal] = useState(false);
+  const [editingDist, setEditingDist] = useState(null);
+  const [distForm, setDistForm] = useState(emptyDistForm);
+  const [savingDist, setSavingDist] = useState(false);
+  const [deleteDistTarget, setDeleteDistTarget] = useState(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [g, d, f, p, r] = await Promise.all([
+      supabase.from('outgoing_goods').select('*, factories(name), regions(name), products(brands(name))').order('transaction_date', { ascending: false }).limit(200),
+      supabase.from('distributors').select('*, regions(name)').order('name'),
+      supabase.from('factories').select('id, name').order('name'),
+      supabase.from('products').select('id, brand_id, brands(name), factories(name)').order('id'),
+      supabase.from('regions').select('id, name').order('name'),
+    ]);
+    if (g.error) toast.error('Gagal memuat transaksi: ' + g.error.message);
+    if (g.data) setOutgoingGoods(g.data);
+    if (d.data) setDistributors(d.data);
+    if (f.data) setFactories(f.data);
+    if (p.data) setProducts(p.data);
+    if (r.data) setRegions(r.data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (ready) loadData();
+  }, [ready]); // eslint-disable-line
+
+  const filteredGoods = outgoingGoods.filter((g) => {
+    const matchMonth = g.transaction_date?.startsWith(selectedMonth);
+    const q = search.trim().toLowerCase();
+    const matchSearch = !q || g.customer_name?.toLowerCase().includes(q) || g.factories?.name?.toLowerCase().includes(q) || g.regions?.name?.toLowerCase().includes(q);
+    return matchMonth && matchSearch;
+  });
+
+  const totalVolume = filteredGoods.reduce((sum, g) => sum + (g.volume || 0), 0);
+  const totalValue = filteredGoods.reduce((sum, g) => sum + Number(g.total_value || 0), 0);
+
+  const formatCurrency = (num) => {
+    if (num >= 1000000000) return `Rp ${(num / 1000000000).toFixed(1)} M`;
+    if (num >= 1000000) return `Rp ${(num / 1000000).toFixed(1)} Jt`;
+    return `Rp ${Number(num).toLocaleString('id-ID')}`;
+  };
+
+  const trendData = [
+    { month: 'Jan', value: 2400 },
+    { month: 'Feb', value: 2800 },
+    { month: 'Mar', value: 2600 },
+    { month: 'Apr', value: 3100 },
+    { month: 'Mei', value: 3000 },
   ];
+  const chartColors = { grid: isDark ? '#1f2937' : '#f3f4f6', text: isDark ? '#6b7280' : '#9ca3af' };
+
+  // ============ Goods CRUD ============
+  const openGoodsCreate = () => {
+    setEditingGoods(null);
+    setGoodsForm(emptyGoodsForm);
+    setShowGoodsModal(true);
+  };
+  const openGoodsEdit = (g) => {
+    setEditingGoods(g);
+    setGoodsForm({
+      transaction_date: g.transaction_date || '',
+      customer_name: g.customer_name || '',
+      region_id: g.region_id || '',
+      product_id: g.product_id || '',
+      factory_id: g.factory_id || '',
+      volume: g.volume || 0,
+      total_value: g.total_value || 0,
+      payment_method: g.payment_method || 'tunai',
+    });
+    setShowGoodsModal(true);
+  };
+  const handleGoodsSubmit = async (e) => {
+    e?.preventDefault?.();
+    if (!goodsForm.customer_name.trim() || !goodsForm.factory_id || !goodsForm.product_id) {
+      toast.warning('Lengkapi field wajib (customer, pabrik, produk)');
+      return;
+    }
+    setSavingGoods(true);
+    try {
+      const payload = {
+        transaction_date: goodsForm.transaction_date,
+        customer_name: goodsForm.customer_name.trim(),
+        region_id: goodsForm.region_id || null,
+        product_id: goodsForm.product_id,
+        factory_id: goodsForm.factory_id,
+        volume: parseInt(goodsForm.volume) || 0,
+        total_value: parseFloat(goodsForm.total_value) || 0,
+        payment_method: goodsForm.payment_method,
+      };
+      if (editingGoods) {
+        const { error } = await supabase.from('outgoing_goods').update(payload).eq('id', editingGoods.id);
+        if (error) throw error;
+        toast.success('Transaksi diperbarui');
+      } else {
+        payload.created_by = user.id;
+        const { error } = await supabase.from('outgoing_goods').insert(payload);
+        if (error) throw error;
+        toast.success('Transaksi ditambahkan');
+      }
+      setShowGoodsModal(false);
+      setEditingGoods(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingGoods(false);
+    }
+  };
+  const handleGoodsDelete = async () => {
+    if (!deleteGoodsTarget) return;
+    try {
+      const { error } = await supabase.from('outgoing_goods').delete().eq('id', deleteGoodsTarget.id);
+      if (error) throw error;
+      toast.success('Transaksi dihapus');
+      setDeleteGoodsTarget(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  // ============ Distributor CRUD ============
+  const openDistCreate = () => {
+    setEditingDist(null);
+    setDistForm(emptyDistForm);
+    setShowDistModal(true);
+  };
+  const openDistEdit = (d) => {
+    setEditingDist(d);
+    setDistForm({ name: d.name || '', region_id: d.region_id || '', contact_info: d.contact_info || '' });
+    setShowDistModal(true);
+  };
+  const handleDistSubmit = async (e) => {
+    e?.preventDefault?.();
+    if (!distForm.name.trim()) {
+      toast.warning('Nama distributor wajib diisi');
+      return;
+    }
+    setSavingDist(true);
+    try {
+      const payload = {
+        name: distForm.name.trim(),
+        region_id: distForm.region_id || null,
+        contact_info: distForm.contact_info.trim() || null,
+      };
+      if (editingDist) {
+        const { error } = await supabase.from('distributors').update(payload).eq('id', editingDist.id);
+        if (error) throw error;
+        toast.success('Distributor diperbarui');
+      } else {
+        const { error } = await supabase.from('distributors').insert(payload);
+        if (error) throw error;
+        toast.success('Distributor ditambahkan');
+      }
+      setShowDistModal(false);
+      setEditingDist(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSavingDist(false);
+    }
+  };
+  const handleDistDelete = async () => {
+    if (!deleteDistTarget) return;
+    try {
+      const { error } = await supabase.from('distributors').delete().eq('id', deleteDistTarget.id);
+      if (error) throw error;
+      toast.success('Distributor dihapus');
+      setDeleteDistTarget(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  if (loading && outgoingGoods.length === 0 && distributors.length === 0) {
+    return (
+      <div className="space-y-5 max-w-[1400px] mx-auto">
+        <PageHeader title="Distribusi & Penjualan" description="Pantau distribusi dan penjualan produk ke seluruh wilayah." />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div>
+        <SkeletonTable rows={5} cols={5} />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-lg w-full max-w-container-max mx-auto p-4 lg:p-0">
-      
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-surface-variant pb-4">
-        <div>
-          <h1 className="font-h1 text-[28px] font-bold text-on-surface">Data Pemasaran</h1>
-          <p className="font-body-md text-on-surface-variant mt-1">Pantau dan analisis performa distribusi wilayah.</p>
-        </div>
-        <button className="flex items-center gap-xs px-md py-sm bg-[#00146b] text-white rounded-lg font-label-sm text-sm font-semibold hover:bg-[#001050] transition-colors shadow-sm whitespace-nowrap">
-          <span className="material-symbols-outlined text-[18px]">download</span>
-          EXPORT LAPORAN
+    <div className="space-y-5 max-w-[1400px] mx-auto">
+      <PageHeader title="Distribusi & Penjualan" description="Pantau distribusi dan penjualan produk ke seluruh wilayah.">
+        <MonthPicker value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
+        <button onClick={openGoodsCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+          <span className="material-symbols-outlined text-[18px]">add</span>
+          Transaksi Baru
         </button>
-      </div>
+      </PageHeader>
 
-      {/* Filters */}
-      <div className="bg-surface border border-outline-variant rounded-xl p-4 flex flex-col md:flex-row gap-4 items-end mt-2">
-        <div className="flex flex-col gap-1 flex-1 w-full">
-          <label className="font-label-sm text-[11px] text-on-surface-variant">Pabrik (Factory)</label>
-          <div className="relative">
-            <select className="w-full appearance-none px-4 py-2 bg-surface border border-outline-variant rounded-lg text-sm text-on-surface focus:outline-none focus:border-primary">
-              <option>Semua Pabrik</option>
-            </select>
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">expand_more</span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1 flex-1 w-full">
-          <label className="font-label-sm text-[11px] text-on-surface-variant">Wilayah (Region)</label>
-          <div className="relative">
-            <select className="w-full appearance-none px-4 py-2 bg-surface border border-outline-variant rounded-lg text-sm text-on-surface focus:outline-none focus:border-primary">
-              <option>Semua Wilayah</option>
-            </select>
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">expand_more</span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1 flex-1 w-full">
-          <label className="font-label-sm text-[11px] text-on-surface-variant">Periode</label>
-          <div className="relative">
-            <select className="w-full appearance-none px-4 py-2 bg-surface border border-outline-variant rounded-lg text-sm text-on-surface focus:outline-none focus:border-primary">
-              <option>Bulan Ini</option>
-            </select>
-            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline text-[20px] pointer-events-none">expand_more</span>
-          </div>
-        </div>
-        <button className="px-6 py-2 bg-surface-container-low border border-outline-variant text-on-surface rounded-lg text-sm font-medium hover:bg-surface-container transition-colors w-full md:w-auto h-[38px]">
-          Terapkan
-        </button>
-      </div>
-
-      {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1 */}
-        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-             <span className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wider font-semibold">TOTAL PENJUALAN</span>
-             <span className="material-symbols-outlined text-primary text-[20px] bg-primary-container p-1 rounded">payments</span>
-          </div>
-          <span className="font-h1 text-[26px] font-bold text-primary mt-2">Rp 4.2 M</span>
-          <span className="font-label-sm text-xs text-[#21c55e] font-medium flex items-center"><span className="material-symbols-outlined text-[14px]">arrow_upward</span> +12.5% vs bulan lalu</span>
-        </div>
-        {/* Card 2 */}
-        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-             <span className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wider font-semibold">VOLUME TERJUAL</span>
-             <span className="material-symbols-outlined text-primary text-[20px] bg-primary-container p-1 rounded">inventory_2</span>
-          </div>
-          <span className="font-h1 text-[26px] font-bold text-[#1a237e] mt-2">2.1M Btg</span>
-          <span className="font-label-sm text-xs text-[#21c55e] font-medium flex items-center"><span className="material-symbols-outlined text-[14px]">arrow_upward</span> +8.2% vs bulan lalu</span>
-        </div>
-        {/* Card 3 */}
-        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-             <span className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wider font-semibold">TOTAL DISTRIBUTOR</span>
-             <span className="material-symbols-outlined text-primary text-[20px] bg-primary-container p-1 rounded">local_shipping</span>
-          </div>
-          <span className="font-h1 text-[26px] font-bold text-[#1a237e] mt-2">45</span>
-          <span className="font-label-sm text-xs text-on-surface-variant font-medium flex items-center"><span className="material-symbols-outlined text-[14px]">horizontal_rule</span> Stabil</span>
-        </div>
-        {/* Card 4 */}
-        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex flex-col gap-2">
-          <div className="flex justify-between items-center">
-             <span className="font-label-sm text-xs text-on-surface-variant uppercase tracking-wider font-semibold">CAKUPAN WILAYAH</span>
-             <span className="material-symbols-outlined text-primary text-[20px] bg-primary-container p-1 rounded">map</span>
-          </div>
-          <span className="font-h1 text-[26px] font-bold text-[#1a237e] mt-2">12</span>
-          <span className="font-label-sm text-xs text-[#21c55e] font-medium flex items-center"><span className="material-symbols-outlined text-[14px]">add</span> 2 Wilayah Baru</span>
-        </div>
+        <StatCard icon="storefront" label="Total Penjualan" value={formatCurrency(totalValue)} color="blue" />
+        <StatCard icon="inventory_2" label="Volume Terjual" value={totalVolume.toLocaleString()} suffix="btg" color="green" />
+        <StatCard icon="storefront" label="Total Distributor" value={distributors.length} color="purple" />
+        <StatCard icon="map" label="Cakupan Wilayah" value={regions.length} suffix="wilayah" color="orange" />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Box: Tren Penjualan */}
-        <div className="lg:col-span-2 bg-surface border border-outline-variant rounded-xl p-6 flex flex-col relative overflow-hidden min-h-[400px]">
-           <div className="flex justify-between items-center z-10 relative bg-surface pb-2">
-             <h2 className="font-h2 text-[16px] font-bold text-on-surface">Tren Penjualan 6 Bulan Terakhir</h2>
-             <button className="text-outline hover:text-on-surface transition-colors">
-               <span className="material-symbols-outlined">more_vert</span>
-             </button>
-           </div>
-           
-           {/* SVG Line Chart Placeholder */}
-           <div className="absolute inset-0 pt-16 px-6 pb-12 flex flex-col justify-between pointer-events-none">
-              {/* Y Axis Lines */}
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">5M</span></div>
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">4M</span></div>
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">3M</span></div>
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">2M</span></div>
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">1M</span></div>
-              <div className="w-full flex justify-between text-[10px] text-outline border-b border-surface-variant relative h-0"><span className="absolute -top-2 -left-4">0</span></div>
-           </div>
-           
-           <div className="absolute inset-0 pt-16 px-6 pb-12 overflow-hidden flex items-end">
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full">
-                 <path d="M0,80 C20,75 30,90 40,60 C50,30 65,50 80,20 C90,0 100,20 100,20 L100,100 L0,100 Z" fill="#e8eaf6" opacity="0.5" />
-                 <path d="M0,80 C20,75 30,90 40,60 C50,30 65,50 80,20 C90,0 100,20 100,20" fill="none" stroke="#1a237e" strokeWidth="1.5" />
-                 <circle cx="40" cy="60" r="3" fill="white" stroke="#1a237e" strokeWidth="1" />
-                 <circle cx="80" cy="20" r="3" fill="white" stroke="#1a237e" strokeWidth="1" />
-              </svg>
-           </div>
-           
-           {/* X Axis Labels */}
-           <div className="absolute bottom-4 left-6 right-6 flex justify-between text-[10px] text-outline z-10 bg-surface/50 backdrop-blur-sm px-2">
-             <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>Mei</span><span>Jun</span>
-           </div>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Penjualan</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">5 bulan terakhir</p>
+          </div>
         </div>
-
-        {/* Right Box: Distribusi per Wilayah */}
-        <div className="bg-surface border border-outline-variant rounded-xl p-6 flex flex-col">
-           <h2 className="font-h2 text-[16px] font-bold text-on-surface mb-8">Distribusi per Wilayah</h2>
-           
-           <div className="flex-1 flex flex-col items-center justify-center gap-8">
-              {/* Donut Chart representation */}
-              <div className="w-48 h-48 relative rounded-xl overflow-hidden shadow-sm border border-outline-variant">
-                 <div className="absolute inset-0 bg-[#000051]"></div>
-                 <div className="absolute top-0 left-0 w-1/2 h-full bg-[#1a237e]"></div>
-                 <div className="absolute bottom-0 left-0 w-full h-1/2 bg-[#534bae]"></div>
-                 <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-[#8c9eff] rounded-bl-full"></div>
-                 <div className="absolute inset-4 bg-surface rounded-xl flex flex-col items-center justify-center shadow-inner">
-                    <span className="font-h1 text-[32px] font-bold text-[#1a237e]">12</span>
-                    <span className="font-label-sm text-[10px] text-outline uppercase tracking-wider">Wilayah</span>
-                 </div>
-              </div>
-
-              {/* Legend */}
-              <div className="w-full flex flex-col gap-3">
-                 <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#000051]"></div><span className="text-on-surface">Jawa Timur</span></div>
-                    <span className="font-bold">45%</span>
-                 </div>
-                 <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#1a237e]"></div><span className="text-on-surface">Jawa Tengah</span></div>
-                    <span className="font-bold">30%</span>
-                 </div>
-                 <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#534bae]"></div><span className="text-on-surface">Jawa Barat</span></div>
-                    <span className="font-bold">15%</span>
-                 </div>
-                 <div className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2"><div className="w-3 h-3 bg-[#8c9eff]"></div><span className="text-on-surface">Lainnya</span></div>
-                    <span className="font-bold">10%</span>
-                 </div>
-              </div>
-           </div>
-        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '12px' }} />
+            <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#gradSales)" />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
-      {/* Bottom Section: Daftar Distributor */}
-      <div className="bg-surface border border-outline-variant rounded-xl overflow-hidden mt-4 mb-8">
-        <div className="p-4 border-b border-surface-variant flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-           <h2 className="font-h2 text-[16px] font-bold text-on-surface">Daftar Distributor</h2>
-           <div className="relative w-full md:w-64">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
-              <input type="text" placeholder="Cari distributor..." className="w-full pl-9 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-lg text-sm focus:outline-none focus:border-primary" />
-           </div>
+      {/* Transactions */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Transaksi Barang Keluar</h3>
+          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari customer, pabrik, wilayah..." className="md:w-96" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low/30">
-                <th className="p-4 font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold pl-6">NO</th>
-                <th className="p-4 font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold">DISTRIBUTOR</th>
-                <th className="p-4 font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold">WILAYAH</th>
-                <th className="p-4 font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold">VOLUME (BTG)</th>
-                <th className="p-4 font-label-sm text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold text-right">NILAI (RP)</th>
-                <th className="p-4 pr-6"></th>
+              <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tanggal</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Customer</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Volume</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Nilai</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Bayar</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody>
-              {distributors.map((item, index) => (
-                <tr key={index} className="border-b border-surface-variant hover:bg-surface-container-low transition-colors">
-                  <td className="p-4 font-body-md text-[13px] text-on-surface-variant pl-6">{item.no}</td>
-                  <td className="p-4 font-body-md font-bold text-[13px] text-on-surface">{item.name}</td>
-                  <td className="p-4 font-body-md text-[13px] text-on-surface-variant">{item.region}</td>
-                  <td className="p-4 font-body-md text-[13px] text-on-surface-variant">{item.volume}</td>
-                  <td className="p-4 font-body-md text-[13px] text-on-surface-variant text-right">{item.value}</td>
-                  <td className="p-4 pr-6 text-right">
-                    <span className="material-symbols-outlined text-outline text-[18px] cursor-pointer hover:text-primary">chevron_right</span>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+              {filteredGoods.length === 0 ? (
+                <tr><td colSpan="7" className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">{search ? 'Tidak ada hasil pencarian' : 'Belum ada transaksi'}</td></tr>
+              ) : (
+                filteredGoods.map((item) => (
+                  <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">{item.transaction_date}</td>
+                    <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 dark:text-white">{item.customer_name}</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-gray-400">{item.factories?.name || '-'}</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">{Number(item.volume).toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium text-right">{formatCurrency(item.total_value)}</td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-[11px] font-bold px-2 py-1 rounded ${item.payment_method === 'tunai' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'}`}>{item.payment_method === 'tunai' ? 'Tunai' : 'Kredit'}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => openGoodsEdit(item)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Edit"><span className="material-symbols-outlined text-[18px]">edit</span></button>
+                        <button onClick={() => setDeleteGoodsTarget(item)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Hapus"><span className="material-symbols-outlined text-[18px]">delete</span></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Distributors */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Daftar Distributor</h3>
+          <button onClick={openDistCreate} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors">
+            <span className="material-symbols-outlined text-[16px]">add</span>Tambah
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">No</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Nama</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Wilayah</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Kontak</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+              {distributors.length === 0 ? (
+                <tr><td colSpan="5" className="px-5 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">Belum ada distributor</td></tr>
+              ) : distributors.map((dist, i) => (
+                <tr key={dist.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                  <td className="px-5 py-3 text-sm text-gray-400 dark:text-gray-500">{i + 1}</td>
+                  <td className="px-5 py-3 text-sm font-semibold text-gray-900 dark:text-white">{dist.name}</td>
+                  <td className="px-5 py-3 text-sm text-gray-500 dark:text-gray-400">{dist.regions?.name || '-'}</td>
+                  <td className="px-5 py-3 text-sm text-gray-500 dark:text-gray-400">{dist.contact_info || '-'}</td>
+                  <td className="px-5 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => openDistEdit(dist)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><span className="material-symbols-outlined text-[18px]">edit</span></button>
+                      <button onClick={() => setDeleteDistTarget(dist)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"><span className="material-symbols-outlined text-[18px]">delete</span></button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="p-4 flex justify-between items-center bg-surface-container-lowest text-[11px] text-on-surface-variant border-t border-surface-variant">
-          <span>Menampilkan 1-5 dari 45 distributor</span>
-          <div className="flex gap-2">
-             <button className="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low">Prev</button>
-             <button className="px-3 py-1 border border-outline-variant rounded hover:bg-surface-container-low">Next</button>
-          </div>
-        </div>
       </div>
 
+      {/* Goods Modal */}
+      <Modal
+        open={showGoodsModal}
+        onClose={() => !savingGoods && setShowGoodsModal(false)}
+        title={editingGoods ? 'Edit Transaksi' : 'Tambah Transaksi'}
+        size="lg"
+        footer={
+          <>
+            <button onClick={() => setShowGoodsModal(false)} disabled={savingGoods} className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg disabled:opacity-50">Batal</button>
+            <button onClick={handleGoodsSubmit} disabled={savingGoods} className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">{savingGoods ? 'Menyimpan...' : 'Simpan'}</button>
+          </>
+        }
+      >
+        <form onSubmit={handleGoodsSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Tanggal <span className="text-red-500">*</span></label>
+              <input type="date" value={goodsForm.transaction_date} onChange={(e) => setGoodsForm({ ...goodsForm, transaction_date: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Customer <span className="text-red-500">*</span></label>
+              <input value={goodsForm.customer_name} onChange={(e) => setGoodsForm({ ...goodsForm, customer_name: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Nama customer" required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik <span className="text-red-500">*</span></label>
+              <select value={goodsForm.factory_id} onChange={(e) => setGoodsForm({ ...goodsForm, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
+                <option value="">Pilih pabrik...</option>
+                {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Produk <span className="text-red-500">*</span></label>
+              <select value={goodsForm.product_id} onChange={(e) => setGoodsForm({ ...goodsForm, product_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
+                <option value="">Pilih produk...</option>
+                {products.map((p) => <option key={p.id} value={p.id}>{p.brands?.name || '-'} ({p.factories?.name || '-'})</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Wilayah</label>
+              <select value={goodsForm.region_id} onChange={(e) => setGoodsForm({ ...goodsForm, region_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
+                <option value="">— Tidak ditentukan —</option>
+                {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pembayaran</label>
+              <select value={goodsForm.payment_method} onChange={(e) => setGoodsForm({ ...goodsForm, payment_method: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
+                <option value="tunai">Tunai</option>
+                <option value="kredit">Kredit</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Volume (btg)</label>
+              <input type="number" min="0" value={goodsForm.volume} onChange={(e) => setGoodsForm({ ...goodsForm, volume: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Total Nilai (Rp)</label>
+              <input type="number" min="0" step="0.01" value={goodsForm.total_value} onChange={(e) => setGoodsForm({ ...goodsForm, total_value: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Distributor Modal */}
+      <Modal
+        open={showDistModal}
+        onClose={() => !savingDist && setShowDistModal(false)}
+        title={editingDist ? 'Edit Distributor' : 'Tambah Distributor'}
+        footer={
+          <>
+            <button onClick={() => setShowDistModal(false)} disabled={savingDist} className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg disabled:opacity-50">Batal</button>
+            <button onClick={handleDistSubmit} disabled={savingDist} className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">{savingDist ? 'Menyimpan...' : 'Simpan'}</button>
+          </>
+        }
+      >
+        <form onSubmit={handleDistSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Nama Distributor <span className="text-red-500">*</span></label>
+            <input value={distForm.name} onChange={(e) => setDistForm({ ...distForm, name: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Wilayah</label>
+            <select value={distForm.region_id} onChange={(e) => setDistForm({ ...distForm, region_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
+              <option value="">— Pilih —</option>
+              {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kontak</label>
+            <input value={distForm.contact_info} onChange={(e) => setDistForm({ ...distForm, contact_info: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Nomor HP / Email / Alamat" />
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog open={!!deleteGoodsTarget} onClose={() => setDeleteGoodsTarget(null)} onConfirm={handleGoodsDelete} title="Hapus Transaksi?" message={`Hapus transaksi ${deleteGoodsTarget?.customer_name}? Tidak dapat dikembalikan.`} confirmText="Ya, Hapus" cancelText="Batal" variant="danger" icon="delete" />
+      <ConfirmDialog open={!!deleteDistTarget} onClose={() => setDeleteDistTarget(null)} onConfirm={handleDistDelete} title="Hapus Distributor?" message={`Hapus distributor ${deleteDistTarget?.name}? Tidak dapat dikembalikan.`} confirmText="Ya, Hapus" cancelText="Batal" variant="danger" icon="delete" />
     </div>
   );
 };

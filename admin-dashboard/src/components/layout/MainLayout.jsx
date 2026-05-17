@@ -1,30 +1,25 @@
 import React from 'react';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
-import MobileBottomNav from './MobileBottomNav';
-import FAB from './FAB';
+import { useAppContext } from '../../context/AppContext';
 
 const MainLayout = ({ children }) => {
+  const { sidebarCollapsed } = useAppContext();
+  const marginLeft = sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]';
+
   return (
-    <div className="bg-background text-on-surface font-body-md min-h-screen flex w-full">
+    <div className="min-h-screen flex w-full bg-gray-50 dark:bg-gray-950">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      {/* Main Content Wrapper */}
-      <div className="w-full lg:ml-[280px] lg:max-w-[calc(100%-280px)] flex flex-col min-h-screen">
+      {/* Main Content */}
+      <div className={`w-full ${marginLeft} flex flex-col min-h-screen transition-all duration-200`}>
         <Navbar />
-        
-        <main className="flex-1 p-4 lg:p-lg flex flex-col gap-lg bg-background w-full">
+        <main className="flex-1 p-5 lg:p-6">
           {children}
         </main>
-      </div>
-
-      {/* Mobile Elements */}
-      <div className="lg:hidden">
-        <FAB />
-        <MobileBottomNav />
       </div>
     </div>
   );

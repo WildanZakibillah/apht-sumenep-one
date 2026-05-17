@@ -1,30 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import logoApht from '../assets/Logo apht.png';
 
 const SplashScreen = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, loading } = useAuth();
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    // Fade in
     setTimeout(() => setShow(true), 100);
-    // Redirect after 2s
-    const timer = setTimeout(() => {
-      navigate('/login');
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [navigate]);
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      const timer = setTimeout(() => {
+        if (isAuthenticated) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          navigate('/login', { replace: true });
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, isAuthenticated, navigate]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-primary w-full">
-      <div className={`transition-opacity duration-1000 flex flex-col items-center ${show ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="w-20 h-20 rounded-xl bg-surface flex items-center justify-center mb-6 shadow-lg">
-          <span className="material-symbols-outlined text-primary text-[48px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-            admin_panel_settings
-          </span>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-indigo-700 w-full relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4"></div>
+      <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4"></div>
+
+      <div className={`transition-all duration-700 flex flex-col items-center ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+        <img src={logoApht} alt="APHT Sumenep" className="w-20 h-20 object-contain mb-6 drop-shadow-lg" />
+        <h1 className="text-3xl font-bold text-white tracking-tight">APHT SUMENEP</h1>
+        <p className="text-blue-100/70 text-sm mt-2">Super Admin Dashboard</p>
+
+        {/* Loading indicator */}
+        <div className="mt-8">
+          <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
         </div>
-        <h1 className="text-4xl font-h1 text-on-primary font-bold tracking-tight mb-2">APHT Sumenep One</h1>
-        <p className="text-primary-fixed-dim font-body-lg text-lg">Management System for 11 Factories</p>
       </div>
     </div>
   );

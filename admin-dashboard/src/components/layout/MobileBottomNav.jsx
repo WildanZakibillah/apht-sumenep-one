@@ -2,28 +2,38 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 
 const MobileBottomNav = () => {
+  const items = [
+    { icon: 'space_dashboard', label: 'Beranda', path: '/dashboard' },
+    { icon: 'monitoring', label: 'Cukai', path: '/dashboard/pantau-cukai' },
+    { icon: 'request_page', label: 'Pengajuan', path: '/dashboard/pengajuan-cukai' },
+    { icon: 'factory', label: 'Pabrik', path: '/dashboard/data-pabrik' },
+    { icon: 'person', label: 'Akun', path: '/dashboard/settings' },
+  ];
+
   return (
-    <div className="fixed bottom-0 left-0 w-full bg-surface border-t border-outline-variant z-40 pb-safe">
-      <div className="flex justify-between items-center h-16 px-6">
-        <NavLink to="/dashboard" end className={({ isActive }) => `flex flex-col items-center gap-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>
-          <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>dashboard</span>
-          <span className="text-[10px] font-medium">Beranda</span>
-        </NavLink>
-        
-        <NavLink to="/dashboard/laporan-masuk" className={({ isActive }) => `flex flex-col items-center gap-1 pr-8 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>
-          <span className="material-symbols-outlined text-[24px]">description</span>
-          <span className="text-[10px] font-medium">Laporan</span>
-        </NavLink>
-
-        <NavLink to="/dashboard/pantau-cukai" className={({ isActive }) => `flex flex-col items-center gap-1 pl-8 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>
-          <span className="material-symbols-outlined text-[24px]">analytics</span>
-          <span className="text-[10px] font-medium">Cukai</span>
-        </NavLink>
-
-        <NavLink to="/dashboard/profil" className={({ isActive }) => `flex flex-col items-center gap-1 ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}>
-          <span className="material-symbols-outlined text-[24px]">person</span>
-          <span className="text-[10px] font-medium">Profil</span>
-        </NavLink>
+    <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 z-40 lg:hidden">
+      <div className="flex justify-between items-center h-16 px-4">
+        {items.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === '/dashboard'}
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors ${
+                isActive ? 'text-blue-600' : 'text-gray-400'
+              }`
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>
+                  {item.icon}
+                </span>
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
       </div>
     </div>
   );

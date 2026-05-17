@@ -4,12 +4,12 @@ import { supabase } from '../lib/supabase';
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  const [activeWarehouse, setActiveWarehouse] = useState(null); // null means "All" or "Dashboard view"
+  const [activeWarehouse, setActiveWarehouse] = useState(null);
   const [factories, setFactories] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    // Load factories initially
     const loadData = async () => {
       try {
         const { data } = await supabase.from('factories').select('*');
@@ -24,7 +24,8 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{ 
         activeWarehouse, setActiveWarehouse, 
-        factories, isLoading, setIsLoading
+        factories, isLoading, setIsLoading,
+        sidebarCollapsed, setSidebarCollapsed
     }}>
       {children}
     </AppContext.Provider>

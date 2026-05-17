@@ -1,184 +1,121 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-
-const Toggle = ({ checked, onChange }) => (
-  <button
-    className={`w-11 h-6 rounded-full transition-colors relative focus:outline-none shrink-0 ${checked ? 'bg-[#000051]' : 'bg-outline-variant'}`}
-    onClick={() => onChange(!checked)}
-  >
-    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}></div>
-  </button>
-);
+import { useTheme } from '../context/ThemeContext';
 
 const PengaturanAkun = () => {
+  const { user, profile, signOut } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [emailNotif, setEmailNotif] = useState(true);
   const [exciseAlerts, setExciseAlerts] = useState(true);
   const [newReports, setNewReports] = useState(false);
-  const { user, profile, signOut } = useAuth();
-  
-  const handleLogout = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error("Failed to sign out", error);
-    }
-  };
+
+  const Toggle = ({ checked, onChange }) => (
+    <button onClick={() => onChange(!checked)} className={`w-11 h-6 rounded-full transition-colors relative ${checked ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+      <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform shadow-sm ${checked ? 'translate-x-6' : 'translate-x-1'}`}></div>
+    </button>
+  );
 
   return (
-    <div className="flex flex-col gap-lg w-full max-w-container-max mx-auto p-4 lg:p-0">
-      {/* Header */}
-      <div className="flex flex-col border-b border-surface-variant pb-4 mb-4">
-        <h1 className="font-h1 text-[28px] font-bold text-on-surface">Pengaturan Akun</h1>
-        <p className="font-body-md text-on-surface-variant mt-1">Kelola profil, keamanan, dan preferensi notifikasi Anda.</p>
+    <div className="space-y-6 max-w-[900px] mx-auto">
+      {/* Profile */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 dark:from-blue-800 dark:to-indigo-900 px-6 py-8 text-white relative overflow-hidden">
+          <div className="absolute right-0 top-0 w-48 h-48 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4"></div>
+          <div className="flex items-center gap-5 relative z-10">
+            <div className="w-16 h-16 rounded-xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center text-2xl font-bold">
+              {profile?.full_name?.charAt(0) || 'A'}
+            </div>
+            <div>
+              <h3 className="text-xl font-bold">{profile?.full_name || 'Super Admin'}</h3>
+              <p className="text-blue-200 text-sm mt-0.5">{user?.email || 'admin@apht.com'}</p>
+              <span className="inline-block mt-2 text-[11px] font-bold px-3 py-1 rounded-full bg-white/10 border border-white/20">
+                {profile?.role === 'super_admin' ? 'Super Administrator' : profile?.role || 'Admin'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="p-6 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Informasi Profil</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Kelola data profil dan informasi akun</p>
+          </div>
+          <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">edit</span>Edit Profil
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Left Column (Main Settings) */}
-        <div className="lg:col-span-2 flex flex-col gap-6">
-
-          {/* Profil Admin */}
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
-            <div className="bg-surface-container-low px-6 py-4 border-b border-outline-variant">
-              <h2 className="font-h2 text-[18px] font-bold text-on-surface">Profil Admin</h2>
-            </div>
-            <div className="p-6 flex flex-col sm:flex-row items-center sm:items-start gap-6">
-              <div className="w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-outline-variant shadow-sm bg-primary-container flex items-center justify-center">
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile?.full_name || 'Admin'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span className="text-4xl text-on-primary font-bold">{profile?.full_name ? profile.full_name.charAt(0) : 'A'}</span>
-                )}
-              </div>
-              <div className="flex-1 flex flex-col items-center sm:items-start text-center sm:text-left">
-                <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold">NAMA LENGKAP</span>
-                <h3 className="font-h1 text-[20px] font-bold text-on-surface mt-1">{profile?.full_name || 'Super Admin APHT'}</h3>
-
-                <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold mt-4">EMAIL INSTITUSI</span>
-                <p className="font-body-md text-[14px] text-on-surface-variant mt-1">{user?.email || 'admin@apht.sumenep.go.id'}</p>
-
-                <span className="font-label-sm text-[11px] text-outline uppercase tracking-wider font-semibold mt-4">PERAN SISTEM</span>
-                <div className="mt-2">
-                  <span className="bg-[#000051] text-white px-3 py-1 rounded-full text-[11px] font-bold tracking-wide">
-                    {profile?.role === 'super_admin' ? 'Super Administrator' : (profile?.role || 'Administrator')}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 sm:mt-0">
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-sm text-sm font-semibold hover:bg-surface-container-low transition-colors whitespace-nowrap">
-                  <span className="material-symbols-outlined text-[18px]">edit</span>
-                  Edit Profil
-                </button>
-              </div>
-            </div>
+      {/* Security */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+        <h3 className="text-[15px] font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-gray-400 dark:text-gray-500 text-[20px]">shield</span>Keamanan
+        </h3>
+        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Kata Sandi</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-1">
+              <span className="material-symbols-outlined text-emerald-500 text-[14px]">check_circle</span>Terakhir diubah 2 minggu lalu
+            </p>
           </div>
-
-          {/* Keamanan */}
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
-            <div className="bg-surface-container-low px-6 py-4 border-b border-outline-variant">
-              <h2 className="font-h2 text-[18px] font-bold text-on-surface">Keamanan</h2>
-            </div>
-            <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h3 className="font-body-lg text-[16px] font-bold text-on-surface">Kata Sandi Akun</h3>
-                <p className="font-body-md text-[13px] text-on-surface-variant mt-1 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[16px] text-primary">check_circle</span>
-                  Update password terakhir: 2 minggu yang lalu
-                </p>
-              </div>
-              <button className="flex items-center justify-center gap-2 px-6 py-2 bg-[#000051] text-white rounded-lg font-label-sm text-sm font-semibold hover:bg-[#1a237e] transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap">
-                <span className="material-symbols-outlined text-[18px]">key</span>
-                Ubah Password
-              </button>
-            </div>
-          </div>
-
-          {/* Danger Zone */}
-          <div className="bg-[#fff0f0] border border-[#ffcdd2] rounded-xl overflow-hidden mt-4 shadow-sm">
-            <div className="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h3 className="font-body-lg text-[16px] font-bold text-error">Sesi Akun</h3>
-                <p className="font-body-md text-[13px] text-on-surface-variant mt-1">Mengakhiri sesi aktif Anda di perangkat ini.</p>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="flex items-center justify-center gap-2 px-6 py-2 bg-error text-white rounded-lg font-label-sm text-sm font-semibold hover:bg-[#93000a] transition-colors shadow-sm w-full sm:w-auto whitespace-nowrap"
-              >
-                <span className="material-symbols-outlined text-[18px]">logout</span>
-                Keluar dari Sistem
-              </button>
-            </div>
-          </div>
-
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">key</span>Ubah
+          </button>
         </div>
+      </div>
 
-        {/* Right Column (Secondary Settings) */}
-        <div className="flex flex-col gap-6">
-
-          {/* Preferensi Notifikasi */}
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
-            <div className="bg-surface-container-low px-6 py-4 border-b border-outline-variant">
-              <h2 className="font-h2 text-[18px] font-bold text-on-surface">Preferensi Notifikasi</h2>
-            </div>
-            <div className="p-6 flex flex-col gap-6">
-              <div className="flex justify-between items-center gap-4">
-                <div className="flex-1">
-                  <h3 className="font-body-lg text-[14px] font-bold text-on-surface">Notifikasi Email</h3>
-                  <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5 leading-tight">Terima ringkasan sistem via email</p>
-                </div>
-                <Toggle checked={emailNotif} onChange={setEmailNotif} />
-              </div>
-
-              <div className="border-t border-dashed border-outline-variant"></div>
-
-              <div className="flex justify-between items-center gap-4">
-                <div className="flex-1">
-                  <h3 className="font-body-lg text-[14px] font-bold text-on-surface">Peringatan Cukai (Excise Alerts)</h3>
-                  <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5 leading-tight">Laporan anomali data pita cukai</p>
-                </div>
-                <Toggle checked={exciseAlerts} onChange={setExciseAlerts} />
-              </div>
-
-              <div className="border-t border-dashed border-outline-variant"></div>
-
-              <div className="flex justify-between items-center gap-4">
-                <div className="flex-1">
-                  <h3 className="font-body-lg text-[14px] font-bold text-on-surface">Laporan Masuk Baru</h3>
-                  <p className="font-body-md text-[12px] text-on-surface-variant mt-0.5 leading-tight">Pemberitahuan real-time via web</p>
-                </div>
-                <Toggle checked={newReports} onChange={setNewReports} />
-              </div>
-            </div>
+      {/* Appearance */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+        <h3 className="text-[15px] font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-gray-400 dark:text-gray-500 text-[20px]">palette</span>Tampilan
+        </h3>
+        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Mode Gelap</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Sesuaikan tampilan dashboard</p>
           </div>
-
-          {/* Tentang Aplikasi */}
-          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm text-center">
-            <div className="bg-surface-container-low px-6 py-4 border-b border-outline-variant text-left">
-              <h2 className="font-h2 text-[18px] font-bold text-on-surface">Tentang Aplikasi</h2>
-            </div>
-            <div className="p-8 flex flex-col items-center gap-3">
-              <div className="w-16 h-16 bg-[#000051]/5 border border-[#000051]/10 rounded-2xl flex items-center justify-center text-[#000051] mb-2 shadow-sm">
-                <span className="material-symbols-outlined text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>admin_panel_settings</span>
-              </div>
-              <h3 className="font-h1 text-[18px] font-bold text-on-surface">APHT Sumenep One</h3>
-              <p className="font-body-md text-[13px] text-on-surface-variant">Sistem Informasi Pengawasan & Data Industri</p>
-
-              <div className="mt-3">
-                <span className="bg-surface-variant text-on-surface-variant px-3 py-1 rounded font-mono text-[11px] font-bold tracking-wider">Version 1.0.0</span>
-              </div>
-
-              <p className="font-body-md text-[11px] text-outline mt-6">
-                © 2026 APHT Sumenep. All rights reserved.
-              </p>
-            </div>
-          </div>
-
+          <Toggle checked={isDark} onChange={toggleTheme} />
         </div>
+      </div>
 
+      {/* Notifications */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+        <h3 className="text-[15px] font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-gray-400 dark:text-gray-500 text-[20px]">notifications</span>Preferensi Notifikasi
+        </h3>
+        <div className="space-y-3">
+          {[
+            { label: 'Notifikasi Email', desc: 'Terima ringkasan via email', state: emailNotif, setter: setEmailNotif },
+            { label: 'Peringatan Cukai', desc: 'Alert saat pita mendekati batas', state: exciseAlerts, setter: setExciseAlerts },
+            { label: 'Laporan Masuk', desc: 'Pemberitahuan real-time', state: newReports, setter: setNewReports },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.label}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{item.desc}</p>
+              </div>
+              <Toggle checked={item.state} onChange={item.setter} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Danger */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-red-200 dark:border-red-900/50 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-[15px] font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px]">warning</span>Sesi Akun
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Mengakhiri sesi aktif di perangkat ini.</p>
+          </div>
+          <button onClick={signOut} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">
+            <span className="material-symbols-outlined text-[18px]">logout</span>Keluar
+          </button>
+        </div>
+      </div>
+
+      <div className="text-center py-4">
+        <p className="text-xs text-gray-400 dark:text-gray-500">APHT Sumenep One &middot; v1.0.0</p>
       </div>
     </div>
   );
