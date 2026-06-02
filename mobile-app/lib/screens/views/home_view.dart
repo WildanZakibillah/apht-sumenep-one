@@ -6,9 +6,11 @@ import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme.dart';
+import '../../utils/wib_helper.dart';
 import '../activity_detail_screen.dart';
 import '../notification_screen.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../services/report_pdf_service.dart';
 
 class HomeView extends StatefulWidget {
@@ -30,9 +32,19 @@ class _HomeViewState extends State<HomeView> {
   bool _isLoading = true;
 
   @override
+  @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _initNotifications();
+  }
+
+  void _initNotifications() {
+    final auth = context.read<AuthProvider>();
+    final userId = auth.profile?.id;
+    if (userId != null) {
+      context.read<NotificationProvider>().init(userId);
+    }
   }
 
   Future<void> _loadDashboardData() async {
@@ -44,9 +56,9 @@ class _HomeViewState extends State<HomeView> {
     }
 
     final client = Supabase.instance.client;
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1).toIso8601String().split('T').first;
-    final today = now.toIso8601String().split('T').first;
+    final now = WIB.now();
+    final startOfMonth = WIB.toDateString(DateTime(now.year, now.month, 1));
+    final today = WIB.toDateString(now);
 
     try {
       // Total produksi bulan ini (jumlah_isi)
@@ -105,16 +117,30 @@ class _HomeViewState extends State<HomeView> {
           .select()
           .eq('factory_id', factoryId)
           .gte('created_at', '${today}T00:00:00')
-          .order('created_at', ascending: false)
-          .limit(5);
+          .order('created_at', ascending: false);
       for (final p in todayProd) {
+        final hje = (p['hje'] as num?) ?? 0;
+        final jumlahIsi = (p['jumlah_isi'] as int?) ?? 0;
+        final totalNilai = hje * jumlahIsi;
         todayActivities.add({
           'title': 'Produksi ${p['merek']} (${p['jenis']})',
-          'subtitle': '+${NumberFormat('#,###').format(p['jumlah_isi'])} ${p['satuan']}',
-          'time': DateFormat('HH:mm').format(DateTime.parse(p['created_at'])),
+          'subtitle': '+${NumberFormat('#,###').format(jumlahIsi)} ${p['satuan']}',
+          'time': DateFormat('HH:mm').format(WIB.parse(p['created_at'])),
+          'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(p['created_at'])),
           'icon': Icons.inventory_2_outlined,
           'color': const Color(0xFF10B981),
           'type': 'Produksi',
+          'details': <String, String>{
+            'No. Dokumen': p['doc_number'] ?? '-',
+            'Tanggal': p['doc_date'] ?? '-',
+            'Merek': p['merek'] ?? '-',
+            'Jenis': p['jenis'] ?? '-',
+            'HJE': 'Rp ${NumberFormat('#,###').format(hje)}',
+            'Isi': '${p['isi']} ${p['satuan']}',
+            'Jumlah Kemasan': NumberFormat('#,###').format(p['jumlah_kemasan']),
+            'Jumlah Isi': NumberFormat('#,###').format(jumlahIsi),
+            'Total Nilai Produksi': 'Rp ${NumberFormat('#,###').format(totalNilai)}',
+          },
         });
       }
 
@@ -123,17 +149,24 @@ class _HomeViewState extends State<HomeView> {
           .select()
           .eq('factory_id', factoryId)
           .gte('created_at', '${today}T00:00:00')
-          .order('created_at', ascending: false)
-          .limit(5);
+          .order('created_at', ascending: false);
       for (final u in todayUsage) {
         final used = u['used_amount'] as int;
+        final added = u['added_amount'] as int;
         todayActivities.add({
-          'title': 'Pemakaian Cukai',
+          'title': 'Pemakaian Cukai${u['notes'] != null ? ' • ${u['notes']}' : ''}',
           'subtitle': '-$used lembar',
-          'time': DateFormat('HH:mm').format(DateTime.parse(u['created_at'])),
+          'time': DateFormat('HH:mm').format(WIB.parse(u['created_at'])),
+          'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(u['created_at'])),
           'icon': Icons.confirmation_number_outlined,
           'color': const Color(0xFFF59E0B),
           'type': 'Cukai',
+          'details': <String, String>{
+            'Tanggal': u['usage_date'] ?? '-',
+            'Pemakaian': '$used lembar',
+            'Tambahan': '$added lembar',
+            'Catatan': u['notes'] ?? '-',
+          },
         });
       }
 
@@ -142,16 +175,57 @@ class _HomeViewState extends State<HomeView> {
           .select()
           .eq('factory_id', factoryId)
           .gte('created_at', '${today}T00:00:00')
-          .order('created_at', ascending: false)
-          .limit(5);
+          .order('created_at', ascending: false);
       for (final o in todayOut) {
+        final totalValue = (o['total_value'] as num?) ?? 0;
         todayActivities.add({
           'title': 'Keluar → ${o['customer_name']}',
-          'subtitle': '${NumberFormat('#,###').format(o['volume'])} btg • Rp ${NumberFormat('#,###').format(o['total_value'])}',
-          'time': DateFormat('HH:mm').format(DateTime.parse(o['created_at'])),
+          'subtitle': '${NumberFormat('#,###').format(o['volume'])} btg',
+          'time': DateFormat('HH:mm').format(WIB.parse(o['created_at'])),
+          'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(o['created_at'])),
           'icon': Icons.shopping_cart_checkout_outlined,
           'color': const Color(0xFFEF4444),
           'type': 'Keluar',
+          'details': <String, String>{
+            'Tanggal': o['transaction_date'] ?? '-',
+            'Pelanggan': o['customer_name'] ?? '-',
+            'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
+            'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
+            'Pembayaran': (o['payment_method'] as String?)?.toUpperCase() ?? '-',
+          },
+        });
+      }
+
+      // Fetch cukai requests today
+      final todayReq = await client
+          .from('cukai_requests')
+          .select()
+          .eq('factory_id', factoryId)
+          .gte('created_at', '${today}T00:00:00')
+          .order('created_at', ascending: false);
+      for (final r in todayReq) {
+        final status = r['status'] as String;
+        final statusLabel = status == 'approved' ? 'Disetujui' : status == 'rejected' ? 'Ditolak' : 'Pending';
+        final tarif = (r['tarif_cukai'] as num?) ?? 0;
+        final lembar = (r['jumlah_lembar'] as int?) ?? 0;
+        todayActivities.add({
+          'title': 'Pengajuan ${r['jenis_pengajuan']} • ${r['jenis_hasil_tembakau']}',
+          'subtitle': statusLabel,
+          'time': DateFormat('HH:mm').format(WIB.parse(r['created_at'])),
+          'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(r['created_at'])),
+          'icon': Icons.assignment_outlined,
+          'color': const Color(0xFF6366F1),
+          'type': 'Pengajuan',
+          'details': <String, String>{
+            'No. Dokumen': r['doc_number'] ?? '-',
+            'Tanggal': r['request_date'] ?? '-',
+            'Jenis Pengajuan': r['jenis_pengajuan'] ?? '-',
+            'Jenis Tembakau': r['jenis_hasil_tembakau'] ?? '-',
+            'Jumlah Lembar': NumberFormat('#,###').format(lembar),
+            'Tarif Cukai': 'Rp ${NumberFormat('#,###').format(tarif)}',
+            'Total Nilai Cukai': 'Rp ${NumberFormat('#,###').format(tarif * lembar)}',
+            'Status': statusLabel,
+          },
         });
       }
 
@@ -234,10 +308,28 @@ class _HomeViewState extends State<HomeView> {
         ]),
       ]),
       actions: [
-        Container(
-          margin: const EdgeInsets.only(right: 18), width: 42, height: 42,
-          decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(14)),
-          child: IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen())), icon: Icon(Icons.notifications_none_rounded, color: AppTheme.primary, size: 22)),
+        Consumer<NotificationProvider>(
+          builder: (context, notifProvider, _) {
+            final unread = notifProvider.unreadCount;
+            return Container(
+              margin: const EdgeInsets.only(right: 18), width: 42, height: 42,
+              decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(14)),
+              child: Stack(
+                children: [
+                  IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationScreen())), icon: Icon(Icons.notifications_none_rounded, color: AppTheme.primary, size: 22)),
+                  if (unread > 0)
+                    Positioned(
+                      top: 6, right: 6,
+                      child: Container(
+                        width: 16, height: 16,
+                        decoration: BoxDecoration(color: AppTheme.error, shape: BoxShape.circle, border: Border.all(color: isDark ? const Color(0xFF1E293B) : Colors.white, width: 2)),
+                        child: Center(child: Text(unread > 9 ? '9+' : '$unread', style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800))),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );
@@ -369,7 +461,7 @@ class _HomeViewState extends State<HomeView> {
     if (factoryId == null) return null;
 
     final client = Supabase.instance.client;
-    final now = DateTime.now();
+    final now = WIB.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
     final endOfMonth = DateTime(now.year, now.month + 1, 0);
 
@@ -377,8 +469,8 @@ class _HomeViewState extends State<HomeView> {
         .from('productions')
         .select()
         .eq('factory_id', factoryId)
-        .gte('doc_date', startOfMonth.toIso8601String().split('T').first)
-        .lte('doc_date', endOfMonth.toIso8601String().split('T').first)
+        .gte('doc_date', WIB.toDateString(startOfMonth))
+        .lte('doc_date', WIB.toDateString(endOfMonth))
         .order('doc_date');
 
     // Get factory info
@@ -430,19 +522,36 @@ class _HomeViewState extends State<HomeView> {
       else
         ..._todayActivities.map((a) => Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: _buildActivityCard(isDark: isDark, title: a['title'], subtitle: a['subtitle'], time: a['time'], icon: a['icon'], color: a['color'], context: context),
+          child: _buildActivityCard(
+            isDark: isDark,
+            title: a['title'],
+            subtitle: a['subtitle'],
+            time: a['time'],
+            icon: a['icon'],
+            color: a['color'],
+            context: context,
+            date: a['date'],
+            type: a['type'],
+            details: a['details'] as Map<String, String>?,
+          ),
         )),
     ]);
   }
 
-  Widget _buildActivityCard({required bool isDark, required String title, required String subtitle, required String time, required IconData icon, required Color color, required BuildContext context}) {
+  Widget _buildActivityCard({required bool isDark, required String title, required String subtitle, required String time, required IconData icon, required Color color, required BuildContext context, String? date, String? type, Map<String, String>? details}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => ActivityDetailScreen(
-            title: title, subtitle: subtitle, amount: subtitle, status: title.contains('Produksi') ? 'Produksi' : title.contains('Cukai') ? 'Cukai' : 'Keluar',
-            date: time, icon: icon, color: color, details: {'Waktu': time, 'Detail': subtitle},
+            title: title,
+            subtitle: '${type ?? ''} • ${date ?? time}',
+            amount: subtitle,
+            status: type ?? 'Aktivitas',
+            date: date ?? time,
+            icon: icon,
+            color: color,
+            details: details ?? {'Waktu': time, 'Detail': subtitle},
           )));
         },
         borderRadius: BorderRadius.circular(22),
@@ -453,7 +562,7 @@ class _HomeViewState extends State<HomeView> {
             Container(width: 46, height: 46, decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: color, size: 22)),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(title, style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontWeight: FontWeight.w700, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
               Text(subtitle, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 12)),
             ])),

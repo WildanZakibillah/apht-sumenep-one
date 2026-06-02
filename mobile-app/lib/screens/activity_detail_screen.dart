@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../core/theme.dart';
+import '../services/p3c_pdf_service.dart';
 
 class ActivityDetailScreen extends StatelessWidget {
   final String title;
@@ -76,6 +77,12 @@ class ActivityDetailScreen extends StatelessWidget {
   }
 
   Future<void> _share(BuildContext context) async {
+    // Check if this is a Pengajuan Cukai - use P3C format
+    if (status.toLowerCase() == 'pengajuan') {
+      await _shareP3c(context);
+      return;
+    }
+
     final pdfBytes = await _generateDetailPdf();
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/detail_${DateTime.now().millisecondsSinceEpoch}.pdf');
@@ -83,6 +90,36 @@ class ActivityDetailScreen extends StatelessWidget {
     await Share.shareXFiles(
       [XFile(file.path)],
       text: '$title - $amount',
+    );
+  }
+
+  Future<void> _shareP3c(BuildContext context) async {
+    // Extract data from details map for P3C PDF
+    final pdfBytes = await P3cPdfService.generate(
+      docNumber: details['No. Dokumen'] ?? '-',
+      requestDate: details['Tanggal'] ?? date,
+      factoryName: details['Nama Pabrik'] ?? '-',
+      factoryAddress: details['Alamat Pabrik'] ?? '-',
+      nppbkc: details['NPPBKC'] ?? '-',
+      ownerName: details['Nama Pengusaha'] ?? '-',
+      period: details['Tanggal'] ?? '-',
+      jenisPengajuan: details['Jenis Pengajuan'] ?? 'AWAL',
+      lokasiPenyediaan: details['Lokasi Penyediaan'] ?? 'KPPBC',
+      jenisHasilTembakau: details['Jenis Tembakau'] ?? '-',
+      kodePersonalisasi: details['Kode Personalisasi'] ?? '-',
+      seri: details['Seri'] ?? '-',
+      warna: details['Warna'] ?? '-',
+      tarifCukai: double.tryParse((details['Tarif Cukai'] ?? '0').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0,
+      hje: double.tryParse((details['HJE'] ?? '0').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0,
+      isiPerBks: int.tryParse((details['Isi/Bks'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+      jumlahLembar: int.tryParse((details['Jumlah Lembar'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+    );
+
+    // Share directly as PDF file without preview
+    await P3cPdfService.sharePdf(
+      pdfBytes,
+      'P3C_${details['No. Dokumen'] ?? 'pengajuan'}.pdf',
+      text: 'Pengajuan Cukai - ${details['No. Dokumen'] ?? ''}',
     );
   }
 
@@ -116,7 +153,7 @@ class ActivityDetailScreen extends StatelessWidget {
         child: Column(
           children: [
             _buildHeroSection(isDark),
-            Padding(padding: const EdgeInsets.all(20), child: _buildDetailsCard(isDark)),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: _buildDetailsCard(isDark)),
             const SizedBox(height: 40),
           ],
         ),
@@ -127,64 +164,79 @@ class ActivityDetailScreen extends StatelessWidget {
   Widget _buildHeroSection(bool isDark) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.all(20),
-      padding: const EdgeInsets.all(32),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color, color.withValues(alpha: 0.8)]),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 24, offset: const Offset(0, 12))],
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color.withValues(alpha: 0.85), color.withValues(alpha: 0.65)]),
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 8))],
       ),
-      child: Stack(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Positioned(top: -20, right: -20, child: Icon(icon, size: 150, color: Colors.white.withValues(alpha: 0.1))),
-          Column(children: [
-            Container(
-              width: 72, height: 72,
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5)),
-              child: Icon(icon, color: Colors.white, size: 36),
-            ),
-            const SizedBox(height: 24),
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-              child: Text(status.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-            ),
-            const SizedBox(height: 32),
-            Text('Nominal / Jumlah', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Text(amount, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1.0)),
-          ]),
+          Row(
+            children: [
+              Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                    child: Text(status.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Nominal / Jumlah', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12, fontWeight: FontWeight.w500)),
+              Text(amount, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildDetailsCard(bool isDark) {
+    // Filter out fields that are only for PDF generation or duplicate
+    final hiddenKeys = {'tanggal', 'nama pabrik', 'alamat pabrik', 'nppbkc', 'nama pengusaha'};
+    final filteredDetails = Map<String, String>.from(details)
+      ..removeWhere((key, _) => hiddenKeys.contains(key.toLowerCase()));
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(children: [
-            Icon(Icons.info_outline_rounded, color: AppTheme.primary, size: 22),
-            const SizedBox(width: 12),
-            Text('Rincian Transaksi', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
+            Icon(Icons.info_outline_rounded, color: AppTheme.primary, size: 20),
+            const SizedBox(width: 10),
+            Text('Info Detail', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 15, fontWeight: FontWeight.w700)),
           ]),
         ),
         Divider(color: isDark ? Colors.white12 : AppTheme.outlineVariant.withValues(alpha: 0.3), height: 1),
         Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Column(children: [
             _buildDetailRow(isDark, 'Tanggal', date),
-            const SizedBox(height: 16),
-            ...details.entries.map((entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
+            const SizedBox(height: 14),
+            ...filteredDetails.entries.map((entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
               child: _buildDetailRow(isDark, entry.key, entry.value),
             )),
           ]),

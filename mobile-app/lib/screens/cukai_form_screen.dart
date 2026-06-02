@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/cukai_usage_service.dart';
+import '../utils/wib_helper.dart';
 
 class CukaiFormScreen extends StatefulWidget {
   const CukaiFormScreen({super.key});
@@ -15,7 +16,7 @@ class CukaiFormScreen extends StatefulWidget {
 
 class _CukaiFormScreenState extends State<CukaiFormScreen> {
   bool _isLoading = false;
-  DateTime _usageDate = DateTime.now();
+  DateTime _usageDate = WIB.now();
   final _usedController = TextEditingController();
   final _addedController = TextEditingController();
   final _notesController = TextEditingController();
@@ -53,7 +54,7 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
     // Auto-create allocation if none exists
     if (res == null) {
       try {
-        final now = DateTime.now();
+        final now = WIB.now();
         final period = 'Q${((now.month - 1) ~/ 3) + 1}-${now.year}';
         final newAlloc = await Supabase.instance.client
             .from('cukai_allocations')
@@ -81,7 +82,7 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
       context: context,
       initialDate: _usageDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: WIB.now(),
     );
     if (picked != null) setState(() => _usageDate = picked);
   }
@@ -118,7 +119,7 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
       await service.insert({
         'allocation_id': _allocation!['id'],
         'factory_id': factoryId,
-        'usage_date': _usageDate.toIso8601String().split('T').first,
+        'usage_date': WIB.toDateString(_usageDate),
         'used_amount': used,
         'added_amount': added,
         'notes': _notesController.text.isEmpty ? null : _notesController.text,

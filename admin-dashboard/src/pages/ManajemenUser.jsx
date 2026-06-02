@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseAdmin } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import PageHeader from '../components/shared/PageHeader';
@@ -16,7 +16,7 @@ const ROLES = [
   { value: 'direktur', label: 'Direktur' },
 ];
 
-const emptyForm = { full_name: '', email: '', phone: '', role: 'admin_pabrik', factory_id: '', is_active: true };
+const emptyForm = { full_name: '', email: '', password: '', phone: '', role: 'admin_pabrik', factory_id: '', is_active: true };
 
 const ManajemenUser = () => {
   const [users, setUsers] = useState([]);
@@ -59,6 +59,7 @@ const ManajemenUser = () => {
     setForm({
       full_name: u.full_name || '',
       email: u.email || '',
+      password: '',
       phone: u.phone || '',
       role: u.role || 'admin_pabrik',
       factory_id: u.factory_id || '',
@@ -82,25 +83,69 @@ const ManajemenUser = () => {
     }
     setSaving(true);
     try {
-      const payload = {
-        full_name: form.full_name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim() || null,
-        role: form.role,
-        factory_id: form.factory_id || null,
-        is_active: form.is_active,
-      };
       if (editing) {
+        // Update existing user profile
+        const payload = {
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim() || null,
+          role: form.role,
+          factory_id: form.factory_id || null,
+          is_active: form.is_active,
+        };
         const { error } = await supabase.from('profiles').update(payload).eq('id', editing.id);
         if (error) throw error;
+
+        // Update password if provided
+        if (form.password && form.password.length >= 6 && supabaseAdmin) {
+          const { error: pwError } = await supabaseAdmin.auth.admin.updateUserById(editing.id, {
+            password: form.password,
+          });
+          if (pwError) {
+            toast.warning('Profil diperbarui, tapi gagal ubah password: ' + pwError.message);
+          }
+        }
+
         toast.success('User berhasil diperbarui');
       } else {
-        // NOTE: Buat user lewat dashboard hanya update profile;
-        // pendaftaran auth.user dilakukan via signup standar.
-        // Untuk simpel, kita beri info bahwa user perlu sudah ada di auth.
-        toast.warning('User baru perlu mendaftar terlebih dulu dari halaman login. Lalu edit role/pabrik di sini.');
-        setSaving(false);
-        return;
+        // Create new user
+        if (!form.password || form.password.length < 6) {
+          toast.warning('Password minimal 6 karakter');
+          setSaving(false);
+          return;
+        }
+
+        if (!supabaseAdmin) {
+          toast.error('Service Role Key belum dikonfigurasi. Tambahkan VITE_SUPABASE_SERVICE_ROLE_KEY di file .env');
+          setSaving(false);
+          return;
+        }
+
+        // 1. Create auth user via admin API (with display name metadata)
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+          email: form.email.trim(),
+          password: form.password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: form.full_name.trim(),
+          },
+        });
+        if (authError) throw authError;
+
+        // 2. Update/insert profile with role and factory (use admin client to bypass RLS)
+        const userId = authData.user.id;
+        const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
+          id: userId,
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim() || null,
+          role: form.role,
+          factory_id: form.factory_id || null,
+          is_active: form.is_active,
+        });
+        if (profileError) throw profileError;
+
+        toast.success('User baru berhasil dibuat');
       }
       closeModal();
       await loadUsers();
@@ -125,9 +170,27 @@ const ManajemenUser = () => {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
-      const { error } = await supabase.from('profiles').delete().eq('id', deleteTarget.id);
-      if (error) throw error;
-      toast.success('Profil user dihapus');
+      const userId = deleteTarget.id;
+      const adminClient = supabaseAdmin || supabase;
+
+      // 1. Delete notifications
+      await adminClient.from('notifications').delete().eq('user_id', userId);
+
+      // 2. Delete profile
+      const { error: profileError } = await adminClient.from('profiles').delete().eq('id', userId);
+      if (profileError) throw profileError;
+
+      // 3. Try to delete auth user (may fail due to Supabase internal trigger)
+      if (supabaseAdmin) {
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(userId);
+        } catch (authErr) {
+          // Auth deletion failed - user can be removed manually from Supabase Dashboard
+          console.warn('Auth user not deleted (can be removed from Supabase Dashboard):', authErr.message);
+        }
+      }
+
+      toast.success('User berhasil dihapus dari sistem.');
       setDeleteTarget(null);
       await loadUsers();
     } catch (err) {
@@ -253,10 +316,10 @@ const ManajemenUser = () => {
           </>
         }
       >
-        {!editing && (
+        {!editing && !supabaseAdmin && (
           <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300">
-            <p className="font-semibold mb-1">⚠ Cara menambahkan user baru:</p>
-            <p>Akun baru harus mendaftar terlebih dahulu via halaman Login (signup), kemudian admin dapat mengubah role dan menugaskan pabrik di sini.</p>
+            <p className="font-semibold mb-1">⚠ Service Role Key belum dikonfigurasi</p>
+            <p>Tambahkan <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_SUPABASE_SERVICE_ROLE_KEY</code> di file .env untuk mengaktifkan fitur tambah user.</p>
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -278,24 +341,38 @@ const ManajemenUser = () => {
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">No. HP</label>
-              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="08..." />
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">
+                {editing ? 'Password Baru' : 'Password'} {!editing && <span className="text-red-500">*</span>}
+              </label>
+              <input
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                placeholder={editing ? 'Kosongkan jika tidak diubah' : 'Min. 6 karakter'}
+                type="password"
+                minLength={editing ? 0 : 6}
+                required={!editing}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">No. HP</label>
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="08..." />
+            </div>
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
                 {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik</label>
-              <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
-                <option value="">— Tidak ditugaskan —</option>
-                {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik</label>
+            <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
+              <option value="">— Tidak ditugaskan —</option>
+              {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
           </div>
           <div className="flex items-center gap-2">
             <input id="is_active" type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-400" />
@@ -308,8 +385,8 @@ const ManajemenUser = () => {
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Hapus Profil User?"
-        message={`Hapus profil "${deleteTarget?.full_name}"? Akun login (auth) tidak akan ikut terhapus dan harus dihapus manual via Supabase.`}
+        title="Hapus User?"
+        message={`Hapus user "${deleteTarget?.full_name}" beserta akun loginnya? Data pabrik tetap tersimpan.`}
         confirmText="Ya, Hapus"
         cancelText="Batal"
         variant="danger"

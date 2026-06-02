@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/cukai_service.dart';
+import '../utils/wib_helper.dart';
 
 class PengajuanCukaiScreen extends StatefulWidget {
   const PengajuanCukaiScreen({super.key});
@@ -15,7 +16,7 @@ class PengajuanCukaiScreen extends StatefulWidget {
 
 class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
   bool _isLoading = false;
-  DateTime _requestDate = DateTime.now();
+  DateTime _requestDate = WIB.now();
 
   String _jenisPengajuan = 'AWAL';
   String _lokasiPenyediaan = 'KPPBC';
@@ -104,13 +105,13 @@ class _PengajuanCukaiScreenState extends State<PengajuanCukaiScreen> {
       final factoryId = auth.profile!.factoryId!;
       final userId = auth.profile!.id;
 
-      final now = DateTime.now();
+      final now = WIB.now();
       final docNumber = 'CK-${now.millisecondsSinceEpoch % 100000}';
 
       final cukaiService = CukaiService();
       await cukaiService.insert({
         'doc_number': docNumber,
-        'request_date': _requestDate.toIso8601String().split('T').first,
+        'request_date': WIB.toDateString(_requestDate),
         'factory_id': factoryId,
         'jenis_pengajuan': _jenisPengajuan,
         'lokasi_penyediaan': _lokasiPenyediaan,

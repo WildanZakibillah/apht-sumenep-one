@@ -6,11 +6,13 @@ import '../services/auth_service.dart';
 
 /// Centralized authentication state management.
 /// Listens to Supabase auth changes and exposes the current user profile.
+/// Also subscribes to realtime profile updates (e.g. is_active status changes).
 class AuthProvider extends ChangeNotifier {
   Profile? _profile;
   bool _isLoading = false;
   String? _errorMessage;
   StreamSubscription<AuthState>? _authSubscription;
+  RealtimeChannel? _profileChannel;
 
   AuthProvider() {
     _init();
@@ -36,6 +38,7 @@ class AuthProvider extends ChangeNotifier {
         _loadProfile();
       } else if (event == AuthChangeEvent.signedOut) {
         _profile = null;
+        _unsubscribeProfileRealtime();
         notifyListeners();
       }
     });
@@ -50,12 +53,45 @@ class AuthProvider extends ChangeNotifier {
     _profileCompleter = Completer<void>();
     try {
       _profile = await AuthService.getCurrentProfile();
+      _subscribeProfileRealtime();
       notifyListeners();
     } catch (e) {
       debugPrint('AuthProvider: Failed to load profile: $e');
     } finally {
       _profileCompleter?.complete();
     }
+  }
+
+  /// Subscribe to realtime changes on the current user's profile row.
+  void _subscribeProfileRealtime() {
+    _unsubscribeProfileRealtime();
+    if (_profile == null) return;
+
+    _profileChannel = Supabase.instance.client
+        .channel('profile_${_profile!.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: _profile!.id,
+          ),
+          callback: (payload) {
+            final updated = payload.newRecord;
+            if (updated.isNotEmpty) {
+              _profile = Profile.fromJson(updated);
+              notifyListeners();
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _unsubscribeProfileRealtime() {
+    _profileChannel?.unsubscribe();
+    _profileChannel = null;
   }
 
   /// Wait until the profile has been loaded (useful on app startup).
@@ -102,6 +138,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       await AuthService.signOut();
       _profile = null;
+      _unsubscribeProfileRealtime();
     } catch (e) {
       debugPrint('AuthProvider: Logout error: $e');
     }
@@ -119,6 +156,7 @@ class AuthProvider extends ChangeNotifier {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _unsubscribeProfileRealtime();
     super.dispose();
   }
 }

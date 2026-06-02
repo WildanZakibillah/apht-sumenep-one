@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/report_pdf_service.dart';
+import '../../utils/wib_helper.dart';
 import '../activity_detail_screen.dart';
 
 class LaporanView extends StatefulWidget {
@@ -49,9 +50,9 @@ class _LaporanViewState extends State<LaporanView> {
     }
 
     final client = Supabase.instance.client;
-    final startDate = _selectedMonth.toIso8601String().split('T').first;
+    final startDate = WIB.toDateString(_selectedMonth);
     final endMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
-    final endDate = endMonth.toIso8601String().split('T').first;
+    final endDate = WIB.toDateString(endMonth);
 
     try {
       // Productions
@@ -146,8 +147,6 @@ class _LaporanViewState extends State<LaporanView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildFilterBar(isDark),
-                const SizedBox(height: 20),
                 _buildSegmentedControl(),
                 const SizedBox(height: 24),
                 if (_isLoading)
@@ -172,23 +171,38 @@ class _LaporanViewState extends State<LaporanView> {
   }
 
   Widget _buildFilterBar(bool isDark) {
-    return InkWell(
-      onTap: _pickMonth,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppTheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
+    return const SizedBox.shrink(); // Removed, now integrated into section headers
+  }
+
+  Widget _buildSectionHeader(String title, bool isDark) {
+    return Row(
+      children: [
+        Text(title, style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            DateFormat('MMM yyyy').format(_selectedMonth),
+            style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
         ),
-        child: Row(children: [
-          Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 20),
-          const SizedBox(width: 10),
-          Text(DateFormat('MMMM yyyy').format(_selectedMonth), style: TextStyle(color: AppTheme.primary, fontSize: 15, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 22),
-        ]),
-      ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: _pickMonth,
+          child: Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFF5F7FB),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 18),
+          ),
+        ),
+      ],
     );
   }
 
@@ -239,9 +253,9 @@ class _LaporanViewState extends State<LaporanView> {
     if (factoryId == null) return null;
 
     final client = Supabase.instance.client;
-    final startDate = _selectedMonth.toIso8601String().split('T').first;
+    final startDate = WIB.toDateString(_selectedMonth);
     final endMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
-    final endDate = endMonth.toIso8601String().split('T').first;
+    final endDate = WIB.toDateString(endMonth);
 
     final productions = await client
         .from('productions')
@@ -342,7 +356,7 @@ class _LaporanViewState extends State<LaporanView> {
         textColor: AppTheme.primary, valueColor: AppTheme.onPrimaryFixed, icon: Icons.inventory_2_outlined,
       ),
       const SizedBox(height: 24),
-      Text('Daftar Produksi', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 18, fontWeight: FontWeight.w700)),
+      _buildSectionHeader('Daftar Produksi', isDark),
       const SizedBox(height: 16),
       if (_productions.isEmpty)
         Center(child: Text('Belum ada data produksi', style: TextStyle(color: AppTheme.outline)))
@@ -418,7 +432,7 @@ class _LaporanViewState extends State<LaporanView> {
         textColor: AppTheme.tertiary, valueColor: AppTheme.onTertiaryFixed, icon: Icons.confirmation_number_outlined,
       ),
       const SizedBox(height: 24),
-      Text('Riwayat Penggunaan', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 18, fontWeight: FontWeight.w700)),
+      _buildSectionHeader('Riwayat Penggunaan', isDark),
       const SizedBox(height: 16),
       if (_cukaiUsages.isEmpty)
         Center(child: Text('Belum ada data pemakaian cukai', style: TextStyle(color: AppTheme.outline)))
@@ -489,7 +503,7 @@ class _LaporanViewState extends State<LaporanView> {
         textColor: AppTheme.secondary, valueColor: AppTheme.onSecondaryFixed, icon: Icons.local_shipping_outlined,
       ),
       const SizedBox(height: 24),
-      Text('Riwayat Transaksi', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 18, fontWeight: FontWeight.w700)),
+      _buildSectionHeader('Riwayat Transaksi', isDark),
       const SizedBox(height: 16),
       if (_outgoingGoods.isEmpty)
         Center(child: Text('Belum ada data barang keluar', style: TextStyle(color: AppTheme.outline)))

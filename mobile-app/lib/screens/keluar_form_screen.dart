@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/outgoing_service.dart';
+import '../utils/wib_helper.dart';
 
 class KeluarFormScreen extends StatefulWidget {
   const KeluarFormScreen({super.key});
@@ -16,7 +17,7 @@ class KeluarFormScreen extends StatefulWidget {
 class _KeluarFormScreenState extends State<KeluarFormScreen> {
   bool _isLoading = false;
   bool _isTunai = true;
-  DateTime _transactionDate = DateTime.now();
+  DateTime _transactionDate = WIB.now();
 
   final _customerController = TextEditingController();
   final _volumeController = TextEditingController();
@@ -69,7 +70,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       context: context,
       initialDate: _transactionDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: WIB.now(),
     );
     if (picked != null) setState(() => _transactionDate = picked);
   }
@@ -102,7 +103,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
 
       final service = OutgoingService();
       await service.insert({
-        'transaction_date': _transactionDate.toIso8601String().split('T').first,
+        'transaction_date': WIB.toDateString(_transactionDate),
         'customer_name': _customerController.text,
         'region_id': _selectedRegionId,
         'product_id': _selectedProductId,

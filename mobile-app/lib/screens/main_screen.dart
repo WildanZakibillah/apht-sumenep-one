@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../core/theme.dart';
+import '../providers/auth_provider.dart';
 import 'views/home_view.dart';
 import 'views/history_view.dart';
 import 'views/laporan_view.dart';
@@ -176,6 +178,20 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 
   void _toggleFAB() {
+    // Check if user account is active
+    final auth = context.read<AuthProvider>();
+    if (auth.profile != null && !auth.profile!.isActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Akun Anda dinonaktifkan. Hubungi admin untuk mengaktifkan kembali.'),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
     if (_isFabOpen) {
       _fabAnimController.reverse();
     } else {

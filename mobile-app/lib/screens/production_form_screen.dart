@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../providers/auth_provider.dart';
 import '../services/production_service.dart';
+import '../utils/wib_helper.dart';
 
 class _ProductionEntry {
   String jenis = '';
@@ -31,7 +32,7 @@ class ProductionFormScreen extends StatefulWidget {
 
 class _ProductionFormScreenState extends State<ProductionFormScreen> {
   bool _isLoading = false;
-  DateTime _docDate = DateTime.now();
+  DateTime _docDate = WIB.now();
   late String _docNumber;
   final List<_ProductionEntry> _entries = [_ProductionEntry()];
 
@@ -48,7 +49,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   }
 
   String _generateDocNumber() {
-    final now = DateTime.now();
+    final now = WIB.now();
     final month = _romanMonth(now.month);
     return '${now.millisecondsSinceEpoch % 10000}/GPM/$month/${now.year}';
   }
@@ -97,7 +98,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       context: context,
       initialDate: _docDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: WIB.now(),
     );
     if (picked != null) {
       setState(() => _docDate = picked);
@@ -212,7 +213,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       for (final entry in _entries) {
         await productionService.insert({
           'doc_number': _docNumber,
-          'doc_date': _docDate.toIso8601String().split('T').first,
+          'doc_date': WIB.toDateString(_docDate),
           'product_id': productId,
           'factory_id': factoryId,
           'jenis': entry.jenis,

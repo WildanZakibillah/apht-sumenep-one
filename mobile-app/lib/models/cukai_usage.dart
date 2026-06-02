@@ -1,3 +1,5 @@
+import '../utils/wib_helper.dart';
+
 class CukaiUsage {
   final String id;
   final String allocationId;
@@ -39,7 +41,7 @@ class CukaiUsage {
     return {
       'allocation_id': allocationId,
       'factory_id': factoryId,
-      'usage_date': usageDate.toIso8601String().split('T').first,
+      'usage_date': WIB.toDateString(usageDate),
       'used_amount': usedAmount,
       'added_amount': addedAmount,
       'notes': notes,

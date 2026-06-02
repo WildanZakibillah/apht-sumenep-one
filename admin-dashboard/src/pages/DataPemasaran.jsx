@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -10,7 +10,7 @@ import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
 import MonthPicker from '../components/shared/MonthPicker';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const emptyGoodsForm = {
   transaction_date: new Date().toISOString().slice(0, 10),
@@ -98,6 +98,21 @@ const DataPemasaran = () => {
     { month: 'Mei', value: 3000 },
   ];
   const chartColors = { grid: isDark ? '#1f2937' : '#f3f4f6', text: isDark ? '#6b7280' : '#9ca3af' };
+
+  const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
+
+  // Pie data: volume per region
+  const regionPieData = useMemo(() => {
+    const map = {};
+    filteredGoods.forEach((g) => {
+      const region = g.regions?.name || 'Lainnya';
+      map[region] = (map[region] || 0) + (g.volume || 0);
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [filteredGoods]);
 
   // ============ Goods CRUD ============
   const openGoodsCreate = () => {
@@ -251,28 +266,66 @@ const DataPemasaran = () => {
         <StatCard icon="map" label="Cakupan Wilayah" value={regions.length} suffix="wilayah" color="orange" />
       </div>
 
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Penjualan</h3>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">5 bulan terakhir</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Tren Penjualan */}
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Penjualan</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">5 bulan terakhir</p>
+            </div>
           </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '12px' }} />
+              <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#gradSales)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={trendData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '12px' }} />
-            <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} fill="url(#gradSales)" />
-          </AreaChart>
-        </ResponsiveContainer>
+
+        {/* Pie: Distribusi per Wilayah */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 flex flex-col">
+          <div>
+            <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Distribusi per Wilayah</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Volume bulan ini</p>
+          </div>
+          {regionPieData.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500">Belum ada data</div>
+          ) : (
+            <>
+              <div className="flex-1 flex items-center justify-center py-3">
+                <ResponsiveContainer width="100%" height={160}>
+                  <PieChart>
+                    <Pie data={regionPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={2} startAngle={90} endAngle={-270}>
+                      {regionPieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '12px' }} formatter={(v) => [Number(v).toLocaleString('id-ID') + ' btg', '']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-1.5 mt-1">
+                {regionPieData.map((d, i) => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}></span>
+                      <span className="text-gray-600 dark:text-gray-400 truncate">{d.name}</span>
+                    </span>
+                    <span className="font-bold text-gray-900 dark:text-white">{Number(d.value).toLocaleString('id-ID')}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Transactions */}

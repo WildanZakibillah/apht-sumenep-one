@@ -1,3 +1,5 @@
+import '../utils/wib_helper.dart';
+
 class Production {
   final String id;
   final String docNumber;
@@ -56,7 +58,7 @@ class Production {
   Map<String, dynamic> toJson() {
     return {
       'doc_number': docNumber,
-      'doc_date': docDate.toIso8601String().split('T').first,
+      'doc_date': WIB.toDateString(docDate),
       'product_id': productId,
       'factory_id': factoryId,
       'jenis': jenis,

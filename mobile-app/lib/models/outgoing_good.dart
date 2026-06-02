@@ -1,3 +1,5 @@
+import '../utils/wib_helper.dart';
+
 class OutgoingGood {
   final String id;
   final DateTime transactionDate;
@@ -43,7 +45,7 @@ class OutgoingGood {
 
   Map<String, dynamic> toJson() {
     return {
-      'transaction_date': transactionDate.toIso8601String().split('T').first,
+      'transaction_date': WIB.toDateString(transactionDate),
       'customer_name': customerName,
       'region_id': regionId,
       'product_id': productId,

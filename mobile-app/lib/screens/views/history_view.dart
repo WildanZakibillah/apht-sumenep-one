@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/wib_helper.dart';
 import '../activity_detail_screen.dart';
 
 class _HistoryItem {
@@ -40,6 +41,7 @@ class HistoryView extends StatefulWidget {
 class _HistoryViewState extends State<HistoryView> {
   late Future<List<_HistoryItem>> _historyFuture;
   String _searchQuery = '';
+  String _selectedCategory = 'Semua';
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
   @override
@@ -79,9 +81,9 @@ class _HistoryViewState extends State<HistoryView> {
     final client = Supabase.instance.client;
     final items = <_HistoryItem>[];
 
-    final startDate = _selectedMonth.toIso8601String().split('T').first;
+    final startDate = WIB.toDateString(_selectedMonth);
     final endMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
-    final endDate = endMonth.toIso8601String().split('T').first;
+    final endDate = WIB.toDateString(endMonth);
 
     // Fetch productions
     try {
@@ -106,7 +108,7 @@ class _HistoryViewState extends State<HistoryView> {
           statusText: 'Produksi',
           icon: Icons.inventory_2_outlined,
           iconColor: const Color(0xFF10B981),
-          sortDate: DateTime.parse(p['created_at']),
+          sortDate: WIB.parse(p['created_at']),
           details: {
             'No. Dokumen': p['doc_number'] ?? '-',
             'Tanggal': p['doc_date'] ?? '-',
@@ -145,7 +147,7 @@ class _HistoryViewState extends State<HistoryView> {
           statusText: 'Cukai',
           icon: Icons.confirmation_number_outlined,
           iconColor: const Color(0xFF6366F1),
-          sortDate: DateTime.parse(u['created_at']),
+          sortDate: WIB.parse(u['created_at']),
           details: {
             'Tanggal': u['usage_date'] ?? '-',
             'Pemakaian': '$used lembar',
@@ -177,7 +179,7 @@ class _HistoryViewState extends State<HistoryView> {
           statusText: 'Keluar',
           icon: Icons.shopping_cart_checkout_outlined,
           iconColor: AppTheme.error,
-          sortDate: DateTime.parse(o['created_at']),
+          sortDate: WIB.parse(o['created_at']),
           details: {
             'Tanggal': o['transaction_date'] ?? '-',
             'Pelanggan': o['customer_name'] ?? '-',
@@ -193,7 +195,7 @@ class _HistoryViewState extends State<HistoryView> {
     try {
       final requests = await client
           .from('cukai_requests')
-          .select()
+          .select('*, factories(name, code, address)')
           .eq('factory_id', factoryId)
           .gte('created_at', startDate)
           .lt('created_at', endDate)
@@ -205,6 +207,8 @@ class _HistoryViewState extends State<HistoryView> {
         final statusLabel = status == 'approved' ? 'Disetujui' : status == 'rejected' ? 'Ditolak' : 'Pending';
         final tarif = (r['tarif_cukai'] as num?) ?? 0;
         final lembar = (r['jumlah_lembar'] as int?) ?? 0;
+        final hje = (r['hje'] as num?) ?? 0;
+        final factory = r['factories'] as Map<String, dynamic>?;
         items.add(_HistoryItem(
           title: 'Pengajuan ${r['jenis_pengajuan']} • ${r['jenis_hasil_tembakau']}',
           date: _formatDate(r['created_at']),
@@ -213,16 +217,26 @@ class _HistoryViewState extends State<HistoryView> {
           statusText: 'Pengajuan',
           icon: Icons.assignment_outlined,
           iconColor: const Color(0xFF6366F1),
-          sortDate: DateTime.parse(r['created_at']),
+          sortDate: WIB.parse(r['created_at']),
           details: {
             'No. Dokumen': r['doc_number'] ?? '-',
             'Tanggal': r['request_date'] ?? '-',
             'Jenis Pengajuan': r['jenis_pengajuan'] ?? '-',
+            'Lokasi Penyediaan': r['lokasi_penyediaan'] ?? '-',
             'Jenis Tembakau': r['jenis_hasil_tembakau'] ?? '-',
-            'Jumlah Lembar': NumberFormat('#,###').format(lembar),
-            'Tarif Cukai': 'Rp ${NumberFormat('#,###').format(tarif)}',
+            'Kode Personalisasi': r['kode_personalisasi'] ?? '-',
+            'Seri': r['seri'] ?? '-',
+            'Warna': r['warna'] ?? '-',
+            'Tarif Cukai': '${tarif.toInt()}',
+            'HJE': '${hje.toInt()}',
+            'Isi/Bks': '${r['isi_per_bks'] ?? 0}',
+            'Jumlah Lembar': '$lembar',
             'Total Nilai Cukai': 'Rp ${NumberFormat('#,###').format(tarif * lembar)}',
             'Status': statusLabel,
+            'Nama Pabrik': factory?['name'] ?? '-',
+            'Alamat Pabrik': factory?['address'] ?? '-',
+            'NPPBKC': factory?['code'] ?? '-',
+            'Nama Pengusaha': auth.profile?.fullName ?? '-',
           },
         ));
       }
@@ -233,7 +247,7 @@ class _HistoryViewState extends State<HistoryView> {
   }
 
   String _formatDate(String isoDate) {
-    final dt = DateTime.parse(isoDate);
+    final dt = WIB.parse(isoDate);
     return DateFormat('dd MMM yyyy, HH:mm').format(dt);
   }
 
@@ -256,6 +270,8 @@ class _HistoryViewState extends State<HistoryView> {
               children: [
                 _buildSearchBar(isDark),
                 const SizedBox(height: 12),
+                _buildCategoryChips(isDark),
+                const SizedBox(height: 12),
                 _buildMonthLabel(isDark),
                 const SizedBox(height: 12),
                 FutureBuilder<List<_HistoryItem>>(
@@ -271,6 +287,9 @@ class _HistoryViewState extends State<HistoryView> {
                     var items = snapshot.data ?? [];
                     if (_searchQuery.isNotEmpty) {
                       items = items.where((i) => i.title.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+                    }
+                    if (_selectedCategory != 'Semua') {
+                      items = items.where((i) => i.statusText == _selectedCategory).toList();
                     }
 
                     if (items.isEmpty) {
@@ -303,22 +322,32 @@ class _HistoryViewState extends State<HistoryView> {
   }
 
   Widget _buildMonthLabel(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 18),
-          const SizedBox(width: 8),
-          Text(
-            DateFormat('MMMM yyyy').format(_selectedMonth),
-            style: TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.w700),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Riwayat Terbaru',
+          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                DateFormat('MMMM yyyy').format(_selectedMonth),
+                style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -329,7 +358,7 @@ class _HistoryViewState extends State<HistoryView> {
           child: Container(
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
             ),
             child: TextField(
@@ -347,15 +376,61 @@ class _HistoryViewState extends State<HistoryView> {
         ),
         const SizedBox(width: 12),
         Container(
-          decoration: BoxDecoration(color: AppTheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+          width: 46, height: 46,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFF5F7FB),
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: IconButton(
             onPressed: _pickMonth,
-            icon: const Icon(Icons.filter_list_rounded),
-            color: AppTheme.onPrimaryContainer,
+            icon: Icon(Icons.calendar_month_rounded, color: AppTheme.primary, size: 22),
             tooltip: 'Filter Bulan',
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCategoryChips(bool isDark) {
+    final categories = ['Semua', 'Produksi', 'Cukai', 'Keluar', 'Pengajuan'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: categories.map((cat) {
+          final isSelected = _selectedCategory == cat;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedCategory = cat),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppTheme.primary
+                      : isDark ? const Color(0xFF1E293B) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppTheme.primary
+                        : isDark ? Colors.white.withValues(alpha: 0.08) : AppTheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Text(
+                  cat,
+                  style: TextStyle(
+                    color: isSelected
+                        ? Colors.white
+                        : isDark ? Colors.white70 : AppTheme.onSurfaceVariant,
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 

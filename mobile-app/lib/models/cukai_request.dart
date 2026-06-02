@@ -1,3 +1,5 @@
+import '../utils/wib_helper.dart';
+
 class CukaiRequest {
   final String id;
   final String? docNumber;
@@ -62,7 +64,7 @@ class CukaiRequest {
   Map<String, dynamic> toJson() {
     return {
       'doc_number': docNumber,
-      'request_date': requestDate.toIso8601String().split('T').first,
+      'request_date': WIB.toDateString(requestDate),
       'factory_id': factoryId,
       'jenis_pengajuan': jenisPengajuan,
       'lokasi_penyediaan': lokasiPenyediaan,

@@ -40,6 +40,12 @@ class _ProfilViewState extends State<ProfilView> {
     }
   }
 
+  Future<void> _refresh() async {
+    final auth = context.read<AuthProvider>();
+    await auth.ensureProfileLoaded();
+    await _loadFactoryData();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -54,29 +60,37 @@ class _ProfilViewState extends State<ProfilView> {
     return Scaffold(
       backgroundColor: bg,
       appBar: _buildAppBar(bg, isDark),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildUserCard(isDark, cardBg, cardBorder, profile),
-              const SizedBox(height: 24),
-              _buildSectionLabel('INFORMASI AKUN', isDark),
-              const SizedBox(height: 8),
-              _buildAccountInfoCard(isDark, cardBg, cardBorder, dividerColor, profile),
-              const SizedBox(height: 24),
-              _buildSectionLabel('INFORMASI PABRIK', isDark),
-              const SizedBox(height: 8),
-              _buildFactoryInfoCard(isDark, cardBg, cardBorder, dividerColor),
-              const SizedBox(height: 24),
-              _buildSectionLabel('PREFERENSI', isDark),
-              const SizedBox(height: 8),
-              _buildPreferensiCard(context, isDark, cardBg, cardBorder, dividerColor),
-              const SizedBox(height: 24),
-              _buildLogoutButton(context),
-              const SizedBox(height: 80),
-            ],
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildUserCard(isDark, cardBg, cardBorder, profile),
+                const SizedBox(height: 24),
+                _buildSectionLabel('INFORMASI AKUN', isDark),
+                const SizedBox(height: 8),
+                _buildAccountInfoCard(isDark, cardBg, cardBorder, dividerColor, profile),
+                const SizedBox(height: 24),
+                _buildSectionLabel('INFORMASI PABRIK', isDark),
+                const SizedBox(height: 8),
+                _buildFactoryInfoCard(isDark, cardBg, cardBorder, dividerColor),
+                const SizedBox(height: 24),
+                _buildSectionLabel('PREFERENSI', isDark),
+                const SizedBox(height: 8),
+                _buildPreferensiCard(context, isDark, cardBg, cardBorder, dividerColor),
+                const SizedBox(height: 24),
+                _buildSectionLabel('TENTANG', isDark),
+                const SizedBox(height: 8),
+                _buildAboutCard(isDark, cardBg, cardBorder, dividerColor),
+                const SizedBox(height: 24),
+                _buildLogoutButton(context),
+                const SizedBox(height: 80),
+              ],
+            ),
           ),
         ),
       ),
@@ -134,6 +148,7 @@ class _ProfilViewState extends State<ProfilView> {
   }
 
   Widget _buildAccountInfoCard(bool isDark, Color cardBg, Color cardBorder, Color divider, profile) {
+    final isActive = profile?.isActive == true;
     return Container(
       decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
       child: Column(children: [
@@ -141,7 +156,24 @@ class _ProfilViewState extends State<ProfilView> {
         _buildInfoRow('Email', profile?.email ?? '-', isDark, divider, hasBorder: true),
         _buildInfoRow('Telepon', profile?.phone ?? '-', isDark, divider, hasBorder: true),
         _buildInfoRow('Role', profile != null ? AppConstants.roleDisplayName(profile.role) : '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Status', profile?.isActive == true ? 'Aktif' : 'Nonaktif', isDark, divider, hasBorder: false),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('Status', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: isActive ? const Color(0xFF10B981).withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 7, height: 7, decoration: BoxDecoration(color: isActive ? const Color(0xFF10B981) : AppTheme.error, shape: BoxShape.circle)),
+                const SizedBox(width: 6),
+                Text(isActive ? 'Aktif' : 'Nonaktif', style: TextStyle(color: isActive ? const Color(0xFF10B981) : AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ]),
+        ),
       ]),
     );
   }
@@ -157,14 +189,17 @@ class _ProfilViewState extends State<ProfilView> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Status Pabrik', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 15)),
+            Text('Status Pabrik', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14)),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(color: AppTheme.secondaryContainer.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(20)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981).withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 7, height: 7, decoration: BoxDecoration(color: _factoryData?['status'] == 'active' ? AppTheme.secondary : AppTheme.error, shape: BoxShape.circle)),
+                Container(width: 7, height: 7, decoration: BoxDecoration(color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981) : AppTheme.error, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
-                Text(_factoryData?['status'] == 'active' ? 'Aktif' : 'Nonaktif', style: TextStyle(color: _factoryData?['status'] == 'active' ? AppTheme.secondary : AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700)),
+                Text(_factoryData?['status'] == 'active' ? 'Aktif' : 'Nonaktif', style: TextStyle(color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981) : AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700)),
               ]),
             ),
           ]),
@@ -189,6 +224,15 @@ class _ProfilViewState extends State<ProfilView> {
       decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
       child: Column(children: [
         _buildThemeToggleRow(context, isDark),
+        Divider(height: 1, color: divider),
+        _buildSettingRow(
+          isDark: isDark,
+          icon: Icons.notifications_outlined,
+          iconColor: const Color(0xFFF59E0B),
+          title: 'Notifikasi',
+          subtitle: 'Aktif',
+          onTap: () {},
+        ),
       ]),
     );
   }
@@ -212,14 +256,110 @@ class _ProfilViewState extends State<ProfilView> {
     );
   }
 
+  Widget _buildSettingRow({required bool isDark, required IconData icon, required Color iconColor, required String title, required String subtitle, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(children: [
+          Container(width: 38, height: 38, decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: iconColor, size: 20)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 15, fontWeight: FontWeight.w500)),
+            Text(subtitle, style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline, fontSize: 12)),
+          ])),
+          Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildAboutCard(bool isDark, Color cardBg, Color cardBorder, Color divider) {
+    return Container(
+      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
+      child: Column(children: [
+        _buildSettingRow(
+          isDark: isDark,
+          icon: Icons.info_outline_rounded,
+          iconColor: AppTheme.primary,
+          title: 'Tentang Aplikasi',
+          subtitle: 'APHT Sumenep One v1.0.0',
+          onTap: () => _showAboutDialog(context, isDark),
+        ),
+        Divider(height: 1, color: divider),
+        _buildSettingRow(
+          isDark: isDark,
+          icon: Icons.shield_outlined,
+          iconColor: const Color(0xFF10B981),
+          title: 'Kebijakan Privasi',
+          subtitle: 'Perlindungan data pengguna',
+          onTap: () {},
+        ),
+        Divider(height: 1, color: divider),
+        _buildSettingRow(
+          isDark: isDark,
+          icon: Icons.help_outline_rounded,
+          iconColor: const Color(0xFF6366F1),
+          title: 'Bantuan & Dukungan',
+          subtitle: 'FAQ dan kontak support',
+          onTap: () {},
+        ),
+      ]),
+    );
+  }
+
+  void _showAboutDialog(BuildContext context, bool isDark) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primary.withValues(alpha: 0.7)]), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.factory_outlined, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Text('APHT Sumenep One', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 18, fontWeight: FontWeight.w700)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Aplikasi manajemen pabrik hasil tembakau untuk Asosiasi Pengusaha Hasil Tembakau (APHT) Kabupaten Sumenep.', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 14, height: 1.5)),
+          const SizedBox(height: 16),
+          _buildAboutRow(isDark, 'Versi', '1.0.0'),
+          _buildAboutRow(isDark, 'Platform', 'Android & iOS'),
+          _buildAboutRow(isDark, 'Developer', 'Tim APHT Sumenep'),
+          _buildAboutRow(isDark, 'Tahun', '2025'),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Tutup', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutRow(bool isDark, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: isDark ? Colors.white54 : AppTheme.outline, fontSize: 13)),
+        Text(value, style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 13, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
   Widget _buildLogoutButton(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: _isLoggingOut ? null : () async {
-        setState(() => _isLoggingOut = true);
+        final nav = Navigator.of(context);
         final auth = context.read<AuthProvider>();
+        setState(() => _isLoggingOut = true);
         await auth.logout();
         if (!mounted) return;
-        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+        nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
       },
       icon: _isLoggingOut ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.logout_rounded, size: 20),
       label: Text(_isLoggingOut ? 'Keluar...' : 'Keluar Aplikasi', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
