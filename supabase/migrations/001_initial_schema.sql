@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================
 -- 1. FACTORIES (Pabrik)
 -- ============================================================
-CREATE TABLE factories (
+CREATE TABLE IF NOT EXISTS factories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
@@ -26,7 +26,7 @@ COMMENT ON TABLE factories IS 'Registered tobacco factories under APHT Sumenep j
 -- ============================================================
 -- 2. WAREHOUSES (Gudang)
 -- ============================================================
-CREATE TABLE warehouses (
+CREATE TABLE IF NOT EXISTS warehouses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   address TEXT,
@@ -40,7 +40,7 @@ COMMENT ON TABLE warehouses IS 'Physical warehouse locations linked to factories
 -- ============================================================
 -- 3. PROFILES (extends auth.users)
 -- ============================================================
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -60,7 +60,7 @@ COMMENT ON TABLE profiles IS 'Extended user profiles with role and factory assig
 -- ============================================================
 -- 4. REGIONS (Wilayah Distribusi)
 -- ============================================================
-CREATE TABLE regions (
+CREATE TABLE IF NOT EXISTS regions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -71,7 +71,7 @@ COMMENT ON TABLE regions IS 'Distribution regions / marketing territories';
 -- ============================================================
 -- 5. PRODUCT TYPES (Jenis Produk: SKT, SKM, SPM)
 -- ============================================================
-CREATE TABLE product_types (
+CREATE TABLE IF NOT EXISTS product_types (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   category TEXT NOT NULL CHECK (category IN ('SKT', 'SKM', 'SPM')),
@@ -85,7 +85,7 @@ COMMENT ON TABLE product_types IS 'Master data for tobacco product categories';
 -- ============================================================
 -- 6. BRANDS (Merek)
 -- ============================================================
-CREATE TABLE brands (
+CREATE TABLE IF NOT EXISTS brands (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   product_type_id UUID REFERENCES product_types(id) ON DELETE SET NULL,
@@ -99,7 +99,7 @@ COMMENT ON TABLE brands IS 'Tobacco product brands tied to factory and product t
 -- ============================================================
 -- 7. HJE RATES (Harga Jual Eceran)
 -- ============================================================
-CREATE TABLE hje_rates (
+CREATE TABLE IF NOT EXISTS hje_rates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_type_id UUID REFERENCES product_types(id) ON DELETE CASCADE,
   golongan TEXT NOT NULL,
@@ -113,7 +113,7 @@ COMMENT ON TABLE hje_rates IS 'Government-regulated retail prices per product ty
 -- ============================================================
 -- 8. PRODUCTS (Produk detail)
 -- ============================================================
-CREATE TABLE products (
+CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id UUID REFERENCES brands(id) ON DELETE CASCADE NOT NULL,
   product_type_id UUID REFERENCES product_types(id) ON DELETE CASCADE NOT NULL,
@@ -131,7 +131,7 @@ COMMENT ON TABLE products IS 'Specific product SKU with packaging and pricing de
 -- ============================================================
 -- 9. PRODUCTIONS (Catatan Produksi)
 -- ============================================================
-CREATE TABLE productions (
+CREATE TABLE IF NOT EXISTS productions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   doc_number TEXT NOT NULL,
   doc_date DATE NOT NULL,
@@ -155,7 +155,7 @@ COMMENT ON TABLE productions IS 'Daily production records entered via mobile app
 -- ============================================================
 -- 10. CUKAI ALLOCATIONS (Alokasi Pita Cukai)
 -- ============================================================
-CREATE TABLE cukai_allocations (
+CREATE TABLE IF NOT EXISTS cukai_allocations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   factory_id UUID REFERENCES factories(id) ON DELETE CASCADE NOT NULL,
   quota INT NOT NULL,
@@ -172,7 +172,7 @@ COMMENT ON TABLE cukai_allocations IS 'Excise stamp quota allocations per factor
 -- ============================================================
 -- 11. CUKAI USAGE LOG (Log Pemakaian Pita Cukai)
 -- ============================================================
-CREATE TABLE cukai_usage_log (
+CREATE TABLE IF NOT EXISTS cukai_usage_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   allocation_id UUID REFERENCES cukai_allocations(id) ON DELETE CASCADE NOT NULL,
   factory_id UUID REFERENCES factories(id) ON DELETE CASCADE NOT NULL,
@@ -189,7 +189,7 @@ COMMENT ON TABLE cukai_usage_log IS 'Individual excise stamp usage/addition entr
 -- ============================================================
 -- 12. CUKAI REQUESTS (Pengajuan Pita Cukai)
 -- ============================================================
-CREATE TABLE cukai_requests (
+CREATE TABLE IF NOT EXISTS cukai_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   doc_number TEXT,
   request_date DATE NOT NULL,
@@ -217,7 +217,7 @@ COMMENT ON TABLE cukai_requests IS 'Excise stamp order requests submitted by fac
 -- ============================================================
 -- 13. DISTRIBUTORS (Distributor / Pelanggan)
 -- ============================================================
-CREATE TABLE distributors (
+CREATE TABLE IF NOT EXISTS distributors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   region_id UUID REFERENCES regions(id) ON DELETE SET NULL,
@@ -231,7 +231,7 @@ COMMENT ON TABLE distributors IS 'Distribution partners and customers';
 -- ============================================================
 -- 14. OUTGOING GOODS (Barang Keluar)
 -- ============================================================
-CREATE TABLE outgoing_goods (
+CREATE TABLE IF NOT EXISTS outgoing_goods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_date DATE NOT NULL,
   customer_name TEXT NOT NULL,
@@ -252,7 +252,7 @@ COMMENT ON TABLE outgoing_goods IS 'Outgoing shipment records with payment track
 -- ============================================================
 -- 15. REPORTS (Laporan Bulanan)
 -- ============================================================
-CREATE TABLE reports (
+CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   factory_id UUID REFERENCES factories(id) ON DELETE CASCADE NOT NULL,
   period TEXT NOT NULL,
@@ -274,7 +274,7 @@ COMMENT ON TABLE reports IS 'Monthly factory reports with multi-step verificatio
 -- ============================================================
 -- 16. NOTIFICATIONS
 -- ============================================================
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   title TEXT NOT NULL,
@@ -292,7 +292,7 @@ COMMENT ON TABLE notifications IS 'In-app notification feed for users';
 -- ============================================================
 -- 17. ARCHIVES (Arsip Digital)
 -- ============================================================
-CREATE TABLE archives (
+CREATE TABLE IF NOT EXISTS archives (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id UUID REFERENCES reports(id) ON DELETE SET NULL,
   factory_id UUID REFERENCES factories(id) ON DELETE CASCADE NOT NULL,
@@ -308,19 +308,19 @@ COMMENT ON TABLE archives IS 'Verified and archived reports available for downlo
 -- ============================================================
 -- INDEXES for common query patterns
 -- ============================================================
-CREATE INDEX idx_profiles_factory ON profiles(factory_id);
-CREATE INDEX idx_profiles_role ON profiles(role);
-CREATE INDEX idx_productions_factory ON productions(factory_id);
-CREATE INDEX idx_productions_date ON productions(doc_date);
-CREATE INDEX idx_cukai_allocations_factory ON cukai_allocations(factory_id);
-CREATE INDEX idx_cukai_usage_factory ON cukai_usage_log(factory_id);
-CREATE INDEX idx_outgoing_factory ON outgoing_goods(factory_id);
-CREATE INDEX idx_outgoing_date ON outgoing_goods(transaction_date);
-CREATE INDEX idx_reports_factory ON reports(factory_id);
-CREATE INDEX idx_reports_status ON reports(status);
-CREATE INDEX idx_notifications_user ON notifications(user_id);
-CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read) WHERE is_read = false;
-CREATE INDEX idx_archives_factory ON archives(factory_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_factory ON profiles(factory_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+CREATE INDEX IF NOT EXISTS idx_productions_factory ON productions(factory_id);
+CREATE INDEX IF NOT EXISTS idx_productions_date ON productions(doc_date);
+CREATE INDEX IF NOT EXISTS idx_cukai_allocations_factory ON cukai_allocations(factory_id);
+CREATE INDEX IF NOT EXISTS idx_cukai_usage_factory ON cukai_usage_log(factory_id);
+CREATE INDEX IF NOT EXISTS idx_outgoing_factory ON outgoing_goods(factory_id);
+CREATE INDEX IF NOT EXISTS idx_outgoing_date ON outgoing_goods(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_reports_factory ON reports(factory_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read) WHERE is_read = false;
+CREATE INDEX IF NOT EXISTS idx_archives_factory ON archives(factory_id);
 
 -- ============================================================
 -- updated_at auto-trigger function
@@ -343,6 +343,7 @@ BEGIN
     WHERE column_name = 'updated_at'
       AND table_schema = 'public'
   LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at ON %I', t);
     EXECUTE format(
       'CREATE TRIGGER set_updated_at BEFORE UPDATE ON %I
        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()',
@@ -351,3 +352,34 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- ============================================================
+-- 18. STORAGE BUCKETS (Avatars)
+-- ============================================================
+
+-- Create avatars bucket if not exists
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Drop existing policies if any to avoid errors on re-run
+DROP POLICY IF EXISTS "Avatar Public Access" ON storage.objects;
+DROP POLICY IF EXISTS "Avatar Auth Upload" ON storage.objects;
+DROP POLICY IF EXISTS "Avatar Auth Update" ON storage.objects;
+DROP POLICY IF EXISTS "Avatar Auth Delete" ON storage.objects;
+
+-- Allow public read access
+CREATE POLICY "Avatar Public Access" ON storage.objects FOR SELECT
+USING (bucket_id = 'avatars');
+
+-- Allow authenticated users to upload avatars
+CREATE POLICY "Avatar Auth Upload" ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+
+-- Allow authenticated users to update avatars
+CREATE POLICY "Avatar Auth Update" ON storage.objects FOR UPDATE
+USING (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+
+-- Allow authenticated users to delete avatars
+CREATE POLICY "Avatar Auth Delete" ON storage.objects FOR DELETE
+USING (bucket_id = 'avatars' AND auth.role() = 'authenticated');

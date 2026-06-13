@@ -20,8 +20,10 @@ const TypingText = ({ texts, speed = 45, pause = 2800 }) => {
     } else if (isDeleting && displayed.length > 0) {
       timeout = setTimeout(() => setDisplayed(text.slice(0, displayed.length - 1)), speed / 2);
     } else if (isDeleting && displayed.length === 0) {
-      setIsDeleting(false);
-      setCurrentIndex((prev) => (prev + 1) % texts.length);
+      timeout = setTimeout(() => {
+        setIsDeleting(false);
+        setCurrentIndex((prev) => (prev + 1) % texts.length);
+      }, speed / 2);
     }
     return () => clearTimeout(timeout);
   }, [displayed, isDeleting, currentIndex, texts, speed, pause]);
@@ -63,7 +65,21 @@ const LoginPage = () => {
     setErrorMsg('');
     setIsSubmitting(true);
     try {
-      await signIn(email, password);
+      const { user } = await signIn(email, password);
+      // Extra validation: We can't immediately get the profile from signIn if it doesn't return it,
+      // but we can fetch the profile right here to check the role before letting them proceed.
+      const { supabase } = await import('../lib/supabase');
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      
+      if (profile && profile.role === 'admin_pabrik') {
+        const { signOut } = await import('../services/authService');
+        await signOut();
+        throw new Error('Akses ditolak: Admin Pabrik hanya dapat login melalui aplikasi mobile.');
+      } else if (profile && !['super_admin', 'direktur'].includes(profile.role)) {
+        const { signOut } = await import('../services/authService');
+        await signOut();
+        throw new Error('Akses ditolak: Anda tidak memiliki izin mengakses dashboard admin.');
+      }
     } catch (error) {
       setErrorMsg(error.message || 'Login gagal. Periksa email dan password Anda.');
     } finally {

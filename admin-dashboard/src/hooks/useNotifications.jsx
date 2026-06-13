@@ -52,6 +52,13 @@ export const NotificationsProvider = ({ children }) => {
           setNotifications((prev) => prev.map((n) => (n.id === payload.new.id ? payload.new : n)));
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -70,10 +77,21 @@ export const NotificationsProvider = ({ children }) => {
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
   }, [user]);
 
+  const deleteNotification = useCallback(async (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await supabase.from('notifications').delete().eq('id', id);
+  }, []);
+
+  const deleteAllNotifications = useCallback(async () => {
+    if (!user) return;
+    setNotifications([]);
+    await supabase.from('notifications').delete().eq('user_id', user.id);
+  }, [user]);
+
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   return (
-    <NotificationsContext.Provider value={{ notifications, unreadCount, loading, markAsRead, markAllAsRead, refetch: fetchNotifications }}>
+    <NotificationsContext.Provider value={{ notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications, refetch: fetchNotifications }}>
       {children}
     </NotificationsContext.Provider>
   );

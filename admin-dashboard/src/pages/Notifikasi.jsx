@@ -25,7 +25,7 @@ const getTypeIcon = (type) => {
 };
 
 const Notifikasi = () => {
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, loading, markAsRead, markAllAsRead, deleteNotification, deleteAllNotifications } = useNotifications();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
@@ -41,11 +41,18 @@ const Notifikasi = () => {
   return (
     <div className="space-y-5 max-w-[900px] mx-auto">
       <PageHeader title="Pusat Notifikasi Sistem" description={`${unreadCount} belum dibaca dari ${notifications.length} total`}>
-        {unreadCount > 0 && (
-          <button onClick={markAllAsRead} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors">
-            Tandai semua dibaca
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {unreadCount > 0 && (
+            <button onClick={markAllAsRead} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors">
+              Baca Semua
+            </button>
+          )}
+          {notifications.length > 0 && (
+            <button onClick={deleteAllNotifications} className="text-sm font-medium text-red-500 dark:text-red-400 hover:text-red-600 transition-colors">
+              Hapus Semua
+            </button>
+          )}
+        </div>
       </PageHeader>
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -86,7 +93,27 @@ const Notifikasi = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className={`text-sm ${!notif.is_read ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{notif.title}</p>
-                    {!notif.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5"></span>}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!notif.is_read && (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-blue-600 mt-1.5"></span>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); markAsRead(notif.id); }}
+                            className="text-gray-400 hover:text-blue-500 transition-colors p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                            title="Tandai dibaca"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">check</span>
+                          </button>
+                        </>
+                      )}
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Hapus notifikasi"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{notif.message}</p>
                   <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">{formatTime(notif.created_at)}</p>

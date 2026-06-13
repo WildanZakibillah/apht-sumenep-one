@@ -8,18 +8,20 @@ import { SkeletonCard, SkeletonTable } from '../components/shared/Skeleton';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 
-const ROLES = [
+const ALL_ROLES = [
   { value: 'super_admin', label: 'Super Admin' },
   { value: 'admin_pabrik', label: 'Admin Pabrik' },
-  { value: 'staf_lapangan', label: 'Staf Lapangan' },
   { value: 'direktur', label: 'Direktur' },
 ];
 
-const emptyForm = { full_name: '', email: '', password: '', phone: '', role: 'admin_pabrik', factory_id: '', is_active: true };
+const emptyForm = { full_name: '', email: '', password: '', phone: '', role: 'admin_pabrik', factory_id: '', is_active: true, avatar_url: '' };
 
 const ManajemenUser = () => {
   const [users, setUsers] = useState([]);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState('');
   const [factories, setFactories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -30,13 +32,19 @@ const ManajemenUser = () => {
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const { ready } = useAuth();
+  const { scopeQuery, isFactoryScoped, factoryId } = useRoleAccess();
   const toast = useToast();
+
+  const availableRoles = isFactoryScoped ? ALL_ROLES.filter(r => r.value === 'admin_pabrik') : ALL_ROLES;
 
   const loadUsers = async () => {
     setLoading(true);
+    // Use admin client (service role) to bypass RLS on profiles table
+    // This avoids "Infinite recursion detected in policy for relation profiles" error
+    const adminClient = supabaseAdmin || supabase;
     const [u, f] = await Promise.all([
-      supabase.from('profiles').select('*, factories(name, code)').order('created_at', { ascending: false }),
-      supabase.from('factories').select('id, name, code').order('name'),
+      scopeQuery(adminClient.from('profiles').select('*, factories(name, code)').order('created_at', { ascending: false }), 'factory_id'),
+      scopeQuery(supabase.from('factories').select('id, name, code').order('name'), 'id'),
     ]);
     if (u.error) toast.error('Gagal memuat user: ' + u.error.message);
     else if (u.data) setUsers(u.data);
@@ -45,12 +53,16 @@ const ManajemenUser = () => {
   };
 
   useEffect(() => {
-    if (ready) loadUsers();
+    if (ready) {
+      setTimeout(() => loadUsers(), 0);
+    }
   }, [ready]); // eslint-disable-line
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, factory_id: isFactoryScoped ? factoryId : '' });
+    setPhotoFile(null);
+    setPhotoPreview('');
     setShowModal(true);
   };
 
@@ -64,7 +76,10 @@ const ManajemenUser = () => {
       role: u.role || 'admin_pabrik',
       factory_id: u.factory_id || '',
       is_active: !!u.is_active,
+      avatar_url: u.avatar_url || '',
     });
+    setPhotoFile(null);
+    setPhotoPreview(u.avatar_url || '');
     setShowModal(true);
   };
 
@@ -73,6 +88,8 @@ const ManajemenUser = () => {
     setShowModal(false);
     setEditing(null);
     setForm(emptyForm);
+    setPhotoFile(null);
+    setPhotoPreview('');
   };
 
   const handleSubmit = async (e) => {
@@ -83,6 +100,53 @@ const ManajemenUser = () => {
     }
     setSaving(true);
     try {
+      let finalAvatarUrl = form.avatar_url;
+
+      // Upload photo to Supabase Storage if photoFile is present
+      if (photoFile) {
+        const fileExt = photoFile.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, photoFile);
+        
+        if (uploadError) {
+          throw new Error('Gagal mengunggah foto: ' + uploadError.message);
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath);
+        
+        finalAvatarUrl = publicUrlData.publicUrl;
+
+        // Optionally, if they are editing and they had an old avatar, delete the old one
+        if (editing && editing.avatar_url && editing.avatar_url !== finalAvatarUrl) {
+          try {
+            // Extract file path from public URL
+            const urlParts = editing.avatar_url.split('/avatars/');
+            if (urlParts.length > 1) {
+              const oldFilePath = urlParts[1];
+              await supabase.storage.from('avatars').remove([oldFilePath]);
+            }
+          } catch (e) {
+            console.error('Failed to delete old avatar', e);
+          }
+        }
+      } else if (form.avatar_url === '' && editing?.avatar_url) {
+        // User explicitly deleted the photo
+        try {
+          const urlParts = editing.avatar_url.split('/avatars/');
+          if (urlParts.length > 1) {
+            await supabase.storage.from('avatars').remove([urlParts[1]]);
+          }
+        } catch (e) {
+          console.error('Failed to delete avatar from storage', e);
+        }
+      }
+
       if (editing) {
         // Update existing user profile
         const payload = {
@@ -92,8 +156,10 @@ const ManajemenUser = () => {
           role: form.role,
           factory_id: form.factory_id || null,
           is_active: form.is_active,
+          avatar_url: finalAvatarUrl,
         };
-        const { error } = await supabase.from('profiles').update(payload).eq('id', editing.id);
+        const adminClient = supabaseAdmin || supabase;
+        const { error } = await adminClient.from('profiles').update(payload).eq('id', editing.id);
         if (error) throw error;
 
         // Update password if provided
@@ -142,6 +208,7 @@ const ManajemenUser = () => {
           role: form.role,
           factory_id: form.factory_id || null,
           is_active: form.is_active,
+          avatar_url: finalAvatarUrl,
         });
         if (profileError) throw profileError;
 
@@ -158,7 +225,8 @@ const ManajemenUser = () => {
 
   const handleToggleActive = async (u) => {
     try {
-      const { error } = await supabase.from('profiles').update({ is_active: !u.is_active }).eq('id', u.id);
+      const adminClient = supabaseAdmin || supabase;
+      const { error } = await adminClient.from('profiles').update({ is_active: !u.is_active }).eq('id', u.id);
       if (error) throw error;
       toast.success(`User ${!u.is_active ? 'diaktifkan' : 'dinonaktifkan'}`);
       await loadUsers();
@@ -175,6 +243,18 @@ const ManajemenUser = () => {
 
       // 1. Delete notifications
       await adminClient.from('notifications').delete().eq('user_id', userId);
+
+      // 1.5 Delete avatar from storage if exists
+      if (deleteTarget.avatar_url) {
+        try {
+          const urlParts = deleteTarget.avatar_url.split('/avatars/');
+          if (urlParts.length > 1) {
+            await supabase.storage.from('avatars').remove([urlParts[1]]);
+          }
+        } catch (e) {
+          console.error('Failed to delete avatar from storage', e);
+        }
+      }
 
       // 2. Delete profile
       const { error: profileError } = await adminClient.from('profiles').delete().eq('id', userId);
@@ -213,10 +293,9 @@ const ManajemenUser = () => {
     const map = {
       super_admin: 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400',
       admin_pabrik: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400',
-      staf_lapangan: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400',
       direktur: 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400',
     };
-    const labels = { super_admin: 'Super Admin', admin_pabrik: 'Admin Pabrik', staf_lapangan: 'Staf Lapangan', direktur: 'Direktur' };
+    const labels = { super_admin: 'Super Admin', admin_pabrik: 'Admin Pabrik', direktur: 'Direktur' };
     return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${map[role] || 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>{labels[role] || role}</span>;
   };
 
@@ -247,7 +326,7 @@ const ManajemenUser = () => {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            {[{ id: 'all', label: 'Semua' }, ...ROLES.map((r) => ({ id: r.value, label: r.label }))].map((f) => (
+            {[{ id: 'all', label: 'Semua' }, ...availableRoles.map((r) => ({ id: r.value, label: r.label }))].map((f) => (
               <button key={f.id} onClick={() => setFilterRole(f.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterRole === f.id ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>{f.label}</button>
             ))}
           </div>
@@ -270,7 +349,11 @@ const ManajemenUser = () => {
                 <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[13px] shrink-0">{user.full_name?.charAt(0) || '?'}</div>
+                      {user.avatar_url ? (
+                        <img src={user.avatar_url} alt={user.full_name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[13px] shrink-0">{user.full_name?.charAt(0) || '?'}</div>
+                      )}
                       <div>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">{user.full_name}</p>
                         <p className="text-[11px] text-gray-400 dark:text-gray-500">{user.email}</p>
@@ -323,6 +406,46 @@ const ManajemenUser = () => {
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="relative">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Preview" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 dark:border-gray-700" />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700 text-gray-400">
+                  <span className="material-symbols-outlined text-[32px]">person</span>
+                </div>
+              )}
+              <label className="absolute bottom-0 right-0 w-7 h-7 bg-blue-600 hover:bg-blue-700 text-white rounded-full flex items-center justify-center cursor-pointer transition-colors shadow-sm" title="Unggah Foto">
+                <span className="material-symbols-outlined text-[14px]">photo_camera</span>
+                <input 
+                  type="file" 
+                  accept="image/png, image/jpeg, image/jpg" 
+                  className="hidden" 
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      setPhotoFile(file);
+                      setPhotoPreview(URL.createObjectURL(file));
+                    }
+                  }} 
+                />
+              </label>
+            </div>
+            {photoPreview && (
+              <button 
+                type="button" 
+                onClick={() => {
+                  setPhotoFile(null);
+                  setPhotoPreview('');
+                  setForm({ ...form, avatar_url: '' });
+                }} 
+                className="text-[11px] font-semibold text-red-500 hover:text-red-600 transition-colors"
+              >
+                Hapus Foto
+              </button>
+            )}
+          </div>
+
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Nama Lengkap <span className="text-red-500">*</span></label>
             <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400" placeholder="Nama lengkap" required />
@@ -363,14 +486,14 @@ const ManajemenUser = () => {
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Role</label>
               <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
-                {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {availableRoles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </div>
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik</label>
-            <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
-              <option value="">— Tidak ditugaskan —</option>
+            <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" disabled={isFactoryScoped}>
+              {!isFactoryScoped && <option value="">— Tidak ditugaskan —</option>}
               {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>

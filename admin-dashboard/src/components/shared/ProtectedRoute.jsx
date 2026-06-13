@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { DASHBOARD_ROLES } from '../../hooks/useRoleAccess';
 
 export const ProtectedRoute = () => {
   const { isAuthenticated, loading, profile } = useAuth();
@@ -20,8 +21,8 @@ export const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // If profile loaded and role is NOT super_admin, block access
-  if (profile && profile.role !== 'super_admin') {
+  // Block access if profile is loaded and role is not allowed
+  if (profile && !DASHBOARD_ROLES.includes(profile.role)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-8 max-w-md text-center shadow-lg">
@@ -30,7 +31,7 @@ export const ProtectedRoute = () => {
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Akses Ditolak</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Hanya Super Admin yang dapat mengakses dashboard ini.
+            Anda tidak memiliki izin untuk mengakses dashboard ini.
           </p>
           <button
             onClick={() => { Object.keys(localStorage).forEach(k => { if (k.startsWith('sb-')) localStorage.removeItem(k); }); window.location.href = '/login'; }}
@@ -43,7 +44,5 @@ export const ProtectedRoute = () => {
     );
   }
 
-  // If profile is null (still loading or failed), allow access anyway
-  // The pages will handle their own data loading
   return <Outlet />;
 };

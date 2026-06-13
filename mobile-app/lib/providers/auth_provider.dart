@@ -53,10 +53,13 @@ class AuthProvider extends ChangeNotifier {
     _profileCompleter = Completer<void>();
     try {
       _profile = await AuthService.getCurrentProfile();
-      _subscribeProfileRealtime();
+      if (_profile != null) {
+        _subscribeProfileRealtime();
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('AuthProvider: Failed to load profile: $e');
+      rethrow;
     } finally {
       _profileCompleter?.complete();
     }
@@ -114,6 +117,11 @@ class AuthProvider extends ChangeNotifier {
     try {
       await AuthService.signIn(email: email, password: password);
       await _loadProfile();
+      
+      if (_profile == null) {
+        throw Exception('Profil tidak ditemukan atau gagal dimuat.');
+      }
+      
       _isLoading = false;
       notifyListeners();
       return true;
@@ -123,7 +131,8 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _errorMessage = 'Terjadi kesalahan. Silakan coba lagi.';
+      _errorMessage = 'Terjadi kesalahan sistem: $e';
+      await AuthService.signOut(); // Rollback sign in
       _isLoading = false;
       notifyListeners();
       return false;

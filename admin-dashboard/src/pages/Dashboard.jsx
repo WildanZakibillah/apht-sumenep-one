@@ -1,5 +1,6 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 import MainLayout from '../components/layout/MainLayout';
 import Beranda from './Beranda';
 import DataPabrik from './DataPabrik';
@@ -13,19 +14,22 @@ import Notifikasi from './Notifikasi';
 import PengaturanAkun from './PengaturanAkun';
 
 const Dashboard = () => {
+  const { isFactoryScoped } = useRoleAccess();
+
   return (
     <MainLayout>
       <Routes>
         <Route path="/" element={<Beranda />} />
-        <Route path="/data-pabrik" element={<DataPabrik />} />
+        {!isFactoryScoped && <Route path="/data-pabrik" element={<DataPabrik />} />}
         <Route path="/data-produksi" element={<DataProduksi />} />
         <Route path="/pantau-cukai" element={<PantauCukai />} />
         <Route path="/pengajuan-cukai" element={<PengajuanCukai />} />
         <Route path="/data-pemasaran" element={<DataPemasaran />} />
         <Route path="/data-master" element={<DataMaster />} />
-        <Route path="/manajemen-pengguna" element={<ManajemenUser />} />
+        {!isFactoryScoped && <Route path="/manajemen-pengguna" element={<ManajemenUser />} />}
         <Route path="/notifikasi" element={<Notifikasi />} />
         <Route path="/settings" element={<PengaturanAkun />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </MainLayout>
   );

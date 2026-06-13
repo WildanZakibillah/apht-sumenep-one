@@ -3,45 +3,51 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAppContext } from '../../context/AppContext';
+import { useRoleAccess } from '../../hooks/useRoleAccess';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import logoApht from '../../assets/Logo apht.png';
 
-export const navSections = [
-  {
-    title: 'OVERVIEW',
-    items: [
-      { id: 'dashboard', icon: 'dashboard', label: 'Beranda', path: '/dashboard' },
-      { id: 'factory', icon: 'domain', label: 'Data Pabrik', path: '/dashboard/data-pabrik' },
-    ],
-  },
-  {
-    title: 'OPERASIONAL',
-    items: [
-      { id: 'production', icon: 'inventory_2', label: 'Data Produksi', path: '/dashboard/data-produksi' },
-      { id: 'excise', icon: 'confirmation_number', label: 'Pantau Cukai', path: '/dashboard/pantau-cukai' },
-      { id: 'cukai-requests', icon: 'assignment', label: 'Pengajuan Cukai', path: '/dashboard/pengajuan-cukai' },
-      { id: 'marketing', icon: 'storefront', label: 'Data Pemasaran', path: '/dashboard/data-pemasaran' },
-    ],
-  },
-  {
-    title: 'MANAJEMEN',
-    items: [
-      { id: 'master', icon: 'category', label: 'Data Master', path: '/dashboard/data-master' },
-      { id: 'users', icon: 'people', label: 'Manajemen User', path: '/dashboard/manajemen-pengguna' },
-      { id: 'notifications', icon: 'notifications_active', label: 'Notifikasi', path: '/dashboard/notifikasi', badge: 'notif' },
-      { id: 'settings', icon: 'settings_suggest', label: 'Pengaturan', path: '/dashboard/settings' },
-    ],
-  },
-];
+export const getNavSections = (isFactoryScoped) => {
+  const sections = [
+    {
+      title: 'OVERVIEW',
+      items: [
+        { id: 'dashboard', icon: 'dashboard', label: 'Beranda', path: '/dashboard' },
+        ...(!isFactoryScoped ? [{ id: 'factory', icon: 'domain', label: 'Data Pabrik', path: '/dashboard/data-pabrik' }] : []),
+      ],
+    },
+    {
+      title: 'OPERASIONAL',
+      items: [
+        { id: 'production', icon: 'inventory_2', label: 'Data Produksi', path: '/dashboard/data-produksi' },
+        { id: 'excise', icon: 'confirmation_number', label: 'Pantau Cukai', path: '/dashboard/pantau-cukai' },
+        { id: 'cukai-requests', icon: 'assignment', label: 'Pengajuan Cukai', path: '/dashboard/pengajuan-cukai' },
+        { id: 'marketing', icon: 'storefront', label: 'Data Pemasaran', path: '/dashboard/data-pemasaran' },
+      ],
+    },
+    {
+      title: 'MANAJEMEN',
+      items: [
+        { id: 'master', icon: 'category', label: 'Data Master', path: '/dashboard/data-master' },
+        ...(!isFactoryScoped ? [{ id: 'users', icon: 'people', label: 'Manajemen User', path: '/dashboard/manajemen-pengguna' }] : []),
+        { id: 'notifications', icon: 'notifications_active', label: 'Notifikasi', path: '/dashboard/notifikasi', badge: 'notif' },
+        { id: 'settings', icon: 'settings_suggest', label: 'Pengaturan', path: '/dashboard/settings' },
+      ],
+    },
+  ];
+  return sections;
+};
 
 const Sidebar = () => {
   const { signOut } = useAuth();
   const { unreadCount } = useNotifications();
   const { sidebarCollapsed, setSidebarCollapsed } = useAppContext();
+  const { roleLabel, isFactoryScoped } = useRoleAccess();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const collapsed = sidebarCollapsed;
   const width = collapsed ? 'w-[72px]' : 'w-[260px]';
+  const navSections = getNavSections(isFactoryScoped);
 
   return (
     <>
@@ -53,7 +59,7 @@ const Sidebar = () => {
             {!collapsed && (
               <div>
                 <h2 className="text-gray-900 dark:text-white font-bold text-[15px] tracking-tight leading-tight">APHT SUMENEP</h2>
-                <p className="text-gray-400 dark:text-gray-500 text-[11px] font-medium">Super Admin Panel</p>
+                <p className="text-gray-400 dark:text-gray-500 text-[11px] font-medium">{roleLabel} Panel</p>
               </div>
             )}
           </div>

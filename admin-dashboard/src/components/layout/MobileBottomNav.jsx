@@ -1,12 +1,15 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useRoleAccess } from '../../hooks/useRoleAccess';
 
 const MobileBottomNav = () => {
+  const { isFactoryScoped } = useRoleAccess();
+
   const items = [
     { icon: 'space_dashboard', label: 'Beranda', path: '/dashboard' },
     { icon: 'monitoring', label: 'Cukai', path: '/dashboard/pantau-cukai' },
     { icon: 'request_page', label: 'Pengajuan', path: '/dashboard/pengajuan-cukai' },
-    { icon: 'factory', label: 'Pabrik', path: '/dashboard/data-pabrik' },
+    ...(!isFactoryScoped ? [{ icon: 'factory', label: 'Pabrik', path: '/dashboard/data-pabrik' }] : []),
     { icon: 'person', label: 'Akun', path: '/dashboard/settings' },
   ];
 

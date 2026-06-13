@@ -8,6 +8,7 @@ import { SkeletonCard, SkeletonTable } from '../components/shared/Skeleton';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 
 const GOLONGAN_OPTIONS = ['SKT-I', 'SKT-II', 'SKT-IIIA', 'SKT-IIIB', 'SKM-I', 'SKM-II', 'SPM-I', 'SPM-II'];
 
@@ -24,11 +25,12 @@ const DataPabrik = () => {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const { ready } = useAuth();
+  const { scopeQuery, isFactoryScoped } = useRoleAccess();
   const toast = useToast();
 
   const loadFactories = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('factories').select('*').order('code');
+    const { data, error } = await scopeQuery(supabase.from('factories').select('*').order('code'), 'id');
     if (error) {
       toast.error('Gagal memuat data: ' + error.message);
     } else if (data) {
@@ -136,21 +138,25 @@ const DataPabrik = () => {
 
   return (
     <div className="space-y-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Daftar Pabrik Terdaftar" description="Kelola dan pantau seluruh pabrik rokok di bawah APHT Sumenep.">
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
-        >
-          <span className="material-symbols-outlined text-[18px]">add</span>
-          Tambah Pabrik
-        </button>
+      <PageHeader title={isFactoryScoped ? "Info Pabrik" : "Daftar Pabrik Terdaftar"} description={isFactoryScoped ? "Informasi detail mengenai pabrik Anda." : "Kelola dan pantau seluruh pabrik rokok di bawah APHT Sumenep."}>
+        {!isFactoryScoped && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Tambah Pabrik
+          </button>
+        )}
       </PageHeader>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon="domain" label="Total Pabrik" value={factories.length} color="blue" />
-        <StatCard icon="check_circle" label="Aktif" value={activeCount} color="green" />
-        <StatCard icon="cancel" label="Tidak Aktif" value={inactiveCount} color="red" />
-      </div>
+      {!isFactoryScoped && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard icon="domain" label="Total Pabrik" value={factories.length} color="blue" />
+          <StatCard icon="check_circle" label="Aktif" value={activeCount} color="green" />
+          <StatCard icon="cancel" label="Tidak Aktif" value={inactiveCount} color="red" />
+        </div>
+      )}
 
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -207,9 +213,11 @@ const DataPabrik = () => {
                         <button onClick={() => openEdit(factory)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Edit">
                           <span className="material-symbols-outlined text-[18px]">edit</span>
                         </button>
-                        <button onClick={() => setDeleteTarget(factory)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Hapus">
-                          <span className="material-symbols-outlined text-[18px]">delete</span>
-                        </button>
+                        {!isFactoryScoped && (
+                          <button onClick={() => setDeleteTarget(factory)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Hapus">
+                            <span className="material-symbols-outlined text-[18px]">delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

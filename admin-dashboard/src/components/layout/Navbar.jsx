@@ -3,7 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useTheme } from '../../context/ThemeContext';
-import { navSections } from './Sidebar';
+import { getNavSections } from './Sidebar';
+import { useRoleAccess } from '../../hooks/useRoleAccess';
 import ConfirmDialog from '../shared/ConfirmDialog';
 
 const formatTime = (dateStr) => {
@@ -31,6 +32,7 @@ const Navbar = () => {
   const { profile, signOut } = useAuth();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const { isDark, toggleTheme } = useTheme();
+  const { roleLabel, isDirektur } = useRoleAccess();
   const location = useLocation();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
@@ -39,6 +41,7 @@ const Navbar = () => {
 
   // Title diambil dari label sidebar (sesuai permintaan: header = label sidebar)
   const headerTitle = useMemo(() => {
+    const navSections = getNavSections(isDirektur);
     for (const section of navSections) {
       const item = section.items.find((i) =>
         i.path === '/dashboard'
@@ -48,7 +51,7 @@ const Navbar = () => {
       if (item) return item.label;
     }
     return 'Dashboard';
-  }, [location.pathname]);
+  }, [location.pathname, isDirektur]);
 
   const handleNotifClick = (n) => {
     if (!n.is_read) markAsRead(n.id);
@@ -112,7 +115,7 @@ const Navbar = () => {
                           onClick={() => markAllAsRead()}
                           className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700"
                         >
-                          Tandai semua
+                          Baca Semua
                         </button>
                       )}
                     </div>
@@ -175,7 +178,7 @@ const Navbar = () => {
                 </div>
                 <div className="hidden lg:block text-left">
                   <p className="text-[13px] font-semibold text-gray-800 dark:text-gray-200 leading-tight">{profile?.full_name || 'Admin'}</p>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">Super Admin</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">{roleLabel}</p>
                 </div>
                 <span className="material-symbols-outlined text-gray-400 text-[16px]">expand_more</span>
               </button>

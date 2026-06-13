@@ -9,7 +9,6 @@ class AppConstants {
   // ---------- User Roles ----------
   static const String roleSuperAdmin = 'super_admin';
   static const String roleAdminPabrik = 'admin_pabrik';
-  static const String roleStafLapangan = 'staf_lapangan';
   static const String roleDirektur = 'direktur';
 
   // ---------- Table Names ----------
@@ -37,8 +36,6 @@ class AppConstants {
         return 'Super Admin';
       case roleAdminPabrik:
         return 'Admin Pabrik';
-      case roleStafLapangan:
-        return 'Staf Lapangan';
       case roleDirektur:
         return 'Direktur';
       default:

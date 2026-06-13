@@ -13,6 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, Legend
 } from 'recharts';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 const emptyForm = { factory_id: '', quota: 0, used: 0, damaged: 0, period: '' };
@@ -21,13 +22,14 @@ const currentPeriod = () => { const d = new Date(); return `Q${Math.floor(d.getM
 const PantauCukai = () => {
   const { isDark } = useTheme();
   const { ready } = useAuth();
+  const { scopeQuery, isFactoryScoped, factoryId, isDirektur } = useRoleAccess();
   const toast = useToast();
   const [allocations, setAllocations] = useState([]);
   const [usageLogs, setUsageLogs] = useState([]);
   const [factories, setFactories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedFactory, setSelectedFactory] = useState('all');
+  const [selectedFactory, setSelectedFactory] = useState(isFactoryScoped ? factoryId : 'all');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ ...emptyForm, period: currentPeriod() });
@@ -37,9 +39,9 @@ const PantauCukai = () => {
   const loadData = async () => {
     setLoading(true);
     const [a, f, u] = await Promise.all([
-      supabase.from('cukai_allocations').select('*, factories(name, code)').order('created_at', { ascending: false }),
-      supabase.from('factories').select('id, name, code').order('name'),
-      supabase.from('cukai_usage_log').select('*, factories(name, code)').order('usage_date', { ascending: false }).limit(500),
+      scopeQuery(supabase.from('cukai_allocations').select('*, factories(name, code)').order('created_at', { ascending: false })),
+      scopeQuery(supabase.from('factories').select('id, name, code').order('name'), 'id'),
+      scopeQuery(supabase.from('cukai_usage_log').select('*, factories(name, code)').order('usage_date', { ascending: false }).limit(500)),
     ]);
     if (a.error) toast.error('Gagal memuat: ' + a.error.message);
     if (a.data) setAllocations(a.data);
@@ -50,12 +52,20 @@ const PantauCukai = () => {
 
   useEffect(() => { if (ready) loadData(); }, [ready]); // eslint-disable-line
 
-  const totalQuota = allocations.reduce((s, a) => s + (a.quota || 0), 0);
-  const totalUsed = allocations.reduce((s, a) => s + (a.used || 0), 0);
-  const totalDamaged = allocations.reduce((s, a) => s + (a.damaged || 0), 0);
+  // Factory name for direktur context
+  const factoryName = isDirektur && factories.length > 0 ? factories[0]?.name : null;
+
+  const factoryAllocations = useMemo(() => {
+    if (selectedFactory === 'all') return allocations;
+    return allocations.filter(a => a.factory_id === selectedFactory);
+  }, [allocations, selectedFactory]);
+
+  const totalQuota = factoryAllocations.reduce((s, a) => s + (a.quota || 0), 0);
+  const totalUsed = factoryAllocations.reduce((s, a) => s + (a.used || 0), 0);
+  const totalDamaged = factoryAllocations.reduce((s, a) => s + (a.damaged || 0), 0);
   const totalRemaining = totalQuota - totalUsed - totalDamaged;
 
-  const filteredAllocations = allocations.filter((a) => {
+  const filteredAllocations = factoryAllocations.filter((a) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return a.factories?.name?.toLowerCase().includes(q) || a.factories?.code?.toLowerCase().includes(q);
@@ -73,7 +83,7 @@ const PantauCukai = () => {
   };
 
   // Chart: stacked bar per factory
-  const chartData = allocations.map((a) => ({
+  const chartData = factoryAllocations.map((a) => ({
     code: a.factories?.code || '-',
     name: a.factories?.name || 'Pabrik',
     used: a.used || 0,
@@ -136,14 +146,18 @@ const PantauCukai = () => {
 
   return (
     <div className="space-y-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Monitoring & Distribusi Pita Cukai" description="Pantau distribusi dan sisa pita cukai seluruh pabrik.">
-        <select value={selectedFactory} onChange={(e) => setSelectedFactory(e.target.value)} className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 min-w-[160px]">
-          <option value="all">Semua Pabrik</option>
-          {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
-          <span className="material-symbols-outlined text-[18px]">add</span>Alokasi Baru
-        </button>
+      <PageHeader title={isDirektur ? `Monitoring Cukai ${factoryName || ''}` : 'Monitoring & Distribusi Pita Cukai'} description={isDirektur ? `Pantau distribusi dan sisa pita cukai pabrik ${factoryName || 'Anda'}.` : 'Pantau distribusi dan sisa pita cukai seluruh pabrik.'}>
+        {!isFactoryScoped && (
+          <>
+            <select value={selectedFactory} onChange={(e) => setSelectedFactory(e.target.value)} className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 min-w-[160px]">
+              <option value="all">Semua Pabrik</option>
+              {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+              <span className="material-symbols-outlined text-[18px]">add</span>Alokasi Baru
+            </button>
+          </>
+        )}
       </PageHeader>
 
       {/* Stats */}
@@ -184,7 +198,7 @@ const PantauCukai = () => {
         {/* Pie */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 flex flex-col">
           <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Komposisi Cukai</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Total seluruh pabrik</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{selectedFactory === 'all' ? 'Total seluruh pabrik' : factories.find(f => f.id === selectedFactory)?.name}</p>
           <div className="flex-1 flex items-center justify-center py-4">
             <div className="relative">
               <ResponsiveContainer width={180} height={180}>
@@ -247,13 +261,13 @@ const PantauCukai = () => {
           </h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Sisa pita cukai &lt; 10%</p>
           <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-            {allocations.filter((a) => getPercentage(a) <= 10).length === 0 ? (
+            {factoryAllocations.filter((a) => getPercentage(a) <= 10).length === 0 ? (
               <div className="text-center py-8">
                 <span className="material-symbols-outlined text-emerald-400 dark:text-emerald-500 text-[32px]">verified</span>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Semua pabrik aman</p>
               </div>
             ) : (
-              allocations.filter((a) => getPercentage(a) <= 10).map((alloc) => (
+              factoryAllocations.filter((a) => getPercentage(a) <= 10).map((alloc) => (
                 <div key={alloc.id} className="p-3.5 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{alloc.factories?.name}</span>
@@ -284,7 +298,7 @@ const PantauCukai = () => {
                 <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Rusak</th>
                 <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Sisa</th>
                 <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Status</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>
+                {!isFactoryScoped && <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
@@ -306,12 +320,14 @@ const PantauCukai = () => {
                         {percent <= 10 ? 'KRITIS' : percent <= 25 ? 'WARNING' : 'AMAN'}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => openEdit(alloc)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><span className="material-symbols-outlined text-[16px]">edit</span></button>
-                        <button onClick={() => setDeleteTarget(alloc)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-[16px]">delete</span></button>
-                      </div>
-                    </td>
+                    {!isFactoryScoped && (
+                      <td className="px-5 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => openEdit(alloc)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><span className="material-symbols-outlined text-[16px]">edit</span></button>
+                          <button onClick={() => setDeleteTarget(alloc)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"><span className="material-symbols-outlined text-[16px]">delete</span></button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

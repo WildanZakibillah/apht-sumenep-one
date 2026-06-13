@@ -10,6 +10,41 @@ import {
   AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
+import { useRoleAccess } from '../hooks/useRoleAccess';
+import SearchBar from '../components/shared/SearchBar';
+
+// Custom tooltip for "Produksi per Pabrik": shows name + batang + kemasan
+const ProdTooltip = ({ active, payload, isDark }) => {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div
+      className="rounded-lg shadow-lg border text-xs px-3 py-2 min-w-[180px]"
+      style={{
+        backgroundColor: isDark ? '#1f2937' : '#fff',
+        borderColor: isDark ? '#374151' : '#e5e7eb',
+        color: isDark ? '#f3f4f6' : '#111827',
+      }}
+    >
+      <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
+      <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span className="opacity-80">Batang</span>
+        </span>
+        <span className="font-semibold">{Number(d.batang || 0).toLocaleString('id-ID')} btg</span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span className="opacity-80">Kemasan</span>
+        </span>
+        <span className="font-semibold">{Number(d.kemasan || 0).toLocaleString('id-ID')} kemasan</span>
+      </div>
+    </div>
+  );
+};
 
 // Typing animation component
 const TypingText = ({ texts, speed = 50, pause = 2500 }) => {
@@ -83,6 +118,7 @@ const Beranda = () => {
   const { profile, ready } = useAuth();
   const { isDark } = useTheme();
   const { unreadCount } = useNotifications();
+  const { scopeQuery, isFactoryScoped, isDirektur } = useRoleAccess();
   const [loading, setLoading] = useState(true);
   const [factories, setFactories] = useState([]);
   const [allocations, setAllocations] = useState([]);
@@ -106,11 +142,11 @@ const Beranda = () => {
     const fetchAll = async () => {
       setLoading(true);
       const [factRes, allocRes, prodRes, goodsRes, cukaiRes] = await Promise.all([
-        supabase.from('factories').select('*'),
-        supabase.from('cukai_allocations').select('*, factories(name, code)'),
-        supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false }),
-        supabase.from('outgoing_goods').select('*, factories(name)').order('transaction_date', { ascending: false }).limit(500),
-        supabase.from('cukai_requests').select('*, factories(name, code)').order('created_at', { ascending: false }).limit(50),
+        scopeQuery(supabase.from('factories').select('*'), 'id'),
+        scopeQuery(supabase.from('cukai_allocations').select('*, factories(name, code)')),
+        scopeQuery(supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false })),
+        scopeQuery(supabase.from('outgoing_goods').select('*, factories(name)').order('transaction_date', { ascending: false }).limit(500)),
+        scopeQuery(supabase.from('cukai_requests').select('*, factories(name, code)').order('created_at', { ascending: false }).limit(50)),
       ]);
       if (factRes.data) setFactories(factRes.data);
       if (allocRes.data) setAllocations(allocRes.data);
@@ -136,6 +172,9 @@ const Beranda = () => {
     return cukaiRequests.filter((r) => r.created_at?.slice(0, 10) === todayDate);
   }, [cukaiRequests, todayDate]);
 
+  // Factory name for direktur context
+  const factoryName = isDirektur && factories.length > 0 ? factories[0]?.name : null;
+
   // Stats
   const activeFactories = factories.filter((f) => f.status === 'active').length;
   const totalQuota = allocations.reduce((s, a) => s + (a.quota || 0), 0);
@@ -159,6 +198,25 @@ const Beranda = () => {
     });
     return Object.values(map).sort((a, b) => b.kemasan - a.kemasan).slice(0, 10);
   }, [monthProductions]);
+
+  // Daily production trend for direktur (daily breakdown of current month)
+  const dailyProdTrend = useMemo(() => {
+    if (!isDirektur) return [];
+    const [year, month] = currentMonth.split('-');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const days = {};
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${year}-${month}-${String(i).padStart(2, '0')}`;
+      days[dateStr] = { date: dateStr, label: i.toString(), kemasan: 0, batang: 0 };
+    }
+    monthProductions.forEach((p) => {
+      if (days[p.doc_date]) {
+        days[p.doc_date].kemasan += p.jumlah_kemasan || 0;
+        days[p.doc_date].batang += p.jumlah_isi || 0;
+      }
+    });
+    return Object.values(days);
+  }, [isDirektur, monthProductions, currentMonth]);
 
   // Monthly trend (last 6 months)
   const monthlyTrend = useMemo(() => {
@@ -203,38 +261,7 @@ const Beranda = () => {
 
   const chartColors = { grid: isDark ? '#1f2937' : '#f3f4f6', text: isDark ? '#6b7280' : '#9ca3af' };
 
-  // Custom tooltip for "Produksi per Pabrik": shows name + batang + kemasan
-  const ProdTooltip = ({ active, payload }) => {
-    if (!active || !payload || !payload.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div
-        className="rounded-lg shadow-lg border text-xs px-3 py-2 min-w-[180px]"
-        style={{
-          backgroundColor: isDark ? '#1f2937' : '#fff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-          color: isDark ? '#f3f4f6' : '#111827',
-        }}
-      >
-        <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
-        <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
-        <div className="flex items-center justify-between gap-3 mb-1">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            <span className="opacity-80">Batang</span>
-          </span>
-          <span className="font-semibold">{Number(d.batang || 0).toLocaleString('id-ID')} btg</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="opacity-80">Kemasan</span>
-          </span>
-          <span className="font-semibold">{Number(d.kemasan || 0).toLocaleString('id-ID')} kemasan</span>
-        </div>
-      </div>
-    );
-  };
+
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -265,12 +292,36 @@ const Beranda = () => {
         <div className="absolute right-32 bottom-0 w-40 h-40 bg-white/5 rounded-full translate-y-1/2"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="animate-[fadeSlideIn_0.6s_ease-out]">
-            <p className="text-blue-100 text-sm font-medium tracking-wide animate-[fadeSlideIn_0.6s_ease-out_0.1s_both]">Selamat datang kembali,</p>
-            <h2 className="text-3xl lg:text-4xl font-extrabold mt-1.5 animate-[fadeSlideIn_0.6s_ease-out_0.3s_both]">
-              <span className="bg-gradient-to-r from-white via-blue-100 to-cyan-200 bg-clip-text text-transparent">{profile?.full_name || 'Super Admin APHT'}</span>
-            </h2>
-            <p className="text-blue-200/80 text-[15px] mt-3 max-w-xl h-6 font-medium animate-[fadeSlideIn_0.6s_ease-out_0.5s_both]">
-              <TypingText texts={[
+            {isDirektur ? (
+              <h2 className="text-3xl lg:text-4xl font-extrabold animate-[fadeSlideIn_0.6s_ease-out_0.3s_both]">
+                <span className="text-blue-100 font-medium text-2xl block mb-1">Selamat datang Direktur,</span>
+                <span className="bg-gradient-to-r from-white via-blue-100 to-cyan-200 bg-clip-text text-transparent">{profile?.full_name || 'User'}</span>
+              </h2>
+            ) : (
+              <>
+                <p className="text-blue-100 text-sm font-medium tracking-wide animate-[fadeSlideIn_0.6s_ease-out_0.1s_both]">
+                  Selamat datang kembali,
+                </p>
+                <h2 className="text-3xl lg:text-4xl font-extrabold mt-1.5 animate-[fadeSlideIn_0.6s_ease-out_0.3s_both]">
+                  <span className="bg-gradient-to-r from-white via-blue-100 to-cyan-200 bg-clip-text text-transparent">{profile?.full_name || 'Admin'}</span>
+                </h2>
+              </>
+            )}
+            {isDirektur && factoryName && (
+              <div className="flex items-center gap-2 mt-3 animate-[fadeSlideIn_0.6s_ease-out_0.4s_both]">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 backdrop-blur-sm rounded-full border border-white/20 text-[12px] font-semibold text-blue-100">
+                  <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>domain</span>
+                  {factoryName}
+                </span>
+              </div>
+            )}
+            <p className="text-blue-200/80 text-[15px] mt-4 max-w-xl h-6 font-medium animate-[fadeSlideIn_0.6s_ease-out_0.5s_both]">
+              <TypingText texts={isDirektur ? [
+                'Pantau operasional pabrik Anda secara real-time.',
+                'Kelola data produksi, cukai, dan pemasaran secara real-time.',
+                'Pastikan kepatuhan regulasi pita cukai pabrik Anda.',
+                'Monitor distribusi dan penjualan produk pabrik Anda.',
+              ] : [
                 `Pantau seluruh operasional ${factories.length} pabrik rokok di bawah APHT Sumenep.`,
                 'Kelola data produksi, cukai, dan pemasaran secara real-time.',
                 'Pastikan kepatuhan regulasi pita cukai seluruh pabrik.',
@@ -294,7 +345,12 @@ const Beranda = () => {
 
         {/* Auto Slider - quick stats */}
         <div className="relative z-10 mt-5 pt-5 border-t border-white/10">
-          <AutoSlider items={[
+          <AutoSlider items={isDirektur ? [
+            { icon: 'domain', label: 'Pabrik Anda', value: factoryName || 'Memuat...' },
+            { icon: 'inventory_2', label: 'Produksi Bulan Ini', value: `${formatNumber(totalKemasan)} kemasan` },
+            { icon: 'confirmation_number', label: 'Sisa Pita Cukai', value: `${formatNumber(totalRemaining)} lembar` },
+            { icon: 'storefront', label: 'Pemasaran Bulan Ini', value: formatCurrency(totalRevenue) },
+          ] : [
             { icon: 'domain', label: 'Pabrik Aktif', value: `${activeFactories} dari ${factories.length}` },
             { icon: 'inventory_2', label: 'Produksi Bulan Ini', value: `${formatNumber(totalKemasan)} kemasan` },
             { icon: 'confirmation_number', label: 'Sisa Pita Cukai', value: `${formatNumber(totalRemaining)} lembar` },
@@ -306,7 +362,11 @@ const Beranda = () => {
 
       {/* 4 Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="domain" label="Pabrik Aktif" value={activeFactories} suffix={`/ ${factories.length}`} color="blue" />
+        {isDirektur ? (
+          <StatCard icon="domain" label="Pabrik Anda" value={factoryName || '-'} color="blue" />
+        ) : (
+          <StatCard icon="domain" label="Pabrik Aktif" value={activeFactories} suffix={`/ ${factories.length}`} color="blue" />
+        )}
         <StatCard icon="inventory_2" label="Produksi" value={formatNumber(totalKemasan)} suffix="kemasan" color="green" />
         <StatCard icon="confirmation_number" label="Sisa Cukai" value={formatNumber(totalRemaining)} suffix="lbr" color="purple" />
         <StatCard icon="storefront" label="Pemasaran" value={formatCurrency(totalRevenue)} color="orange" />
@@ -316,10 +376,10 @@ const Beranda = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Area: Tren 6 bulan */}
         <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Produksi & Pemasaran</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">6 bulan terakhir</p>
+              <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Penjualan & Produksi</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">6 bulan terakhir {isDirektur ? `(Pabrik ${factoryName || 'Anda'})` : '(Seluruh Pabrik)'}</p>
             </div>
             <div className="flex items-center gap-4 text-[11px]">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>Produksi</span>
@@ -372,46 +432,74 @@ const Beranda = () => {
         </div>
       </div>
 
-      {/* Produksi per Pabrik (kode, tidak miring, tooltip nama+batang+kemasan) + Pabrik Kritis */}
+      {/* Produksi Chart + Cukai Kritis */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Produksi per Pabrik</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Output bulan ini</p>
+              <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">{isDirektur ? 'Tren Produksi Harian' : 'Produksi per Pabrik'}</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{isDirektur ? `Output harian bulan ini — ${factoryName || ''}` : 'Output bulan ini'}</p>
             </div>
             <Link to="/dashboard/data-produksi" className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">Lihat Semua</Link>
           </div>
-          {prodPerFactory.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-400 dark:text-gray-500">Belum ada data produksi bulan ini</div>
+          {isDirektur ? (
+            /* Direktur: daily trend area chart */
+            dailyProdTrend.length === 0 ? (
+              <div className="flex items-center justify-center py-16 text-sm text-gray-400 dark:text-gray-500">Belum ada data produksi bulan ini</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={dailyProdTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gradProdDaily" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} interval={2} />
+                  <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}`, borderRadius: '8px', fontSize: '12px' }}
+                    labelFormatter={(l, payload) => payload?.[0]?.payload?.date || l}
+                    formatter={(v) => [formatNumber(v), 'Kemasan']}
+                  />
+                  <Area type="monotone" dataKey="kemasan" stroke="#3b82f6" strokeWidth={2} fill="url(#gradProdDaily)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={prodPerFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-                <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
-                <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
-                <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={<ProdTooltip />} />
-                <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
-              </BarChart>
-            </ResponsiveContainer>
+            /* Super Admin: per-factory bar chart */
+            prodPerFactory.length === 0 ? (
+              <div className="flex items-center justify-center py-16 text-sm text-gray-400 dark:text-gray-500">Belum ada data produksi bulan ini</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={prodPerFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                  <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
+                  <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
+                  <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={(props) => <ProdTooltip {...props} isDark={isDark} />} />
+                  <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                </BarChart>
+              </ResponsiveContainer>
+            )
           )}
         </div>
 
-        {/* Pabrik Kritis */}
+        {/* Cukai Kritis */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[15px] font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <span className="material-symbols-outlined text-red-500 text-[18px]">warning</span>
-              Pabrik Kritis
+              {isDirektur ? 'Status Cukai' : 'Pabrik Kritis'}
             </h3>
             <Link to="/dashboard/pantau-cukai" className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">Lihat Semua</Link>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Sisa pita cukai &lt; 10%</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{isDirektur ? 'Status pita cukai pabrik Anda' : 'Sisa pita cukai < 10%'}</p>
           <div className="space-y-3">
             {criticalFactories.length === 0 ? (
               <div className="text-center py-10">
                 <span className="material-symbols-outlined text-emerald-400 dark:text-emerald-500 text-[36px]">verified</span>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Semua pabrik aman</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{isDirektur ? 'Cukai pabrik Anda aman' : 'Semua pabrik aman'}</p>
               </div>
             ) : (
               criticalFactories.map((alloc) => {

@@ -7,6 +7,7 @@ import { SkeletonTable } from '../components/shared/Skeleton';
 import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 
 const TABS = [
   { id: 'product_types', label: 'Jenis Produk', icon: 'category', table: 'product_types' },
@@ -39,12 +40,13 @@ const DataMaster = () => {
   const [productTypes, setProductTypes] = useState([]);
   const [factories, setFactories] = useState([]);
   const { ready } = useAuth();
+  const { scopeQuery, isFactoryScoped, factoryId } = useRoleAccess();
   const toast = useToast();
 
   const loadLookup = async () => {
     const [pt, fc] = await Promise.all([
       supabase.from('product_types').select('id, name').order('name'),
-      supabase.from('factories').select('id, name').order('name'),
+      scopeQuery(supabase.from('factories').select('id, name').order('name'), 'id'),
     ]);
     if (pt.data) setProductTypes(pt.data);
     if (fc.data) setFactories(fc.data);
@@ -55,8 +57,11 @@ const DataMaster = () => {
     let query;
     switch (activeTab) {
       case 'product_types': query = supabase.from('product_types').select('*').order('name'); break;
-      case 'brands': query = supabase.from('brands').select('*, product_types(name), factories(name)').order('name'); break;
-      case 'hje_rates': query = supabase.from('hje_rates').select('*, product_types(name)').order('effective_date', { ascending: false }); break;
+      case 'brands': query = scopeQuery(supabase.from('brands').select('*, product_types(name), factories(name)').order('name')); break;
+      case 'hje_rates':
+        // hje_rates doesn't directly link to factory_id. If needed, we might have to filter it via product_types or just let it be global for direktur (or maybe direktur doesn't see all HJE?).
+        // Usually HJE is global. But if we must scope, we'd need a join or something. For now, let's keep it global since it's "Master Data" and rates are usually global per product type.
+        query = supabase.from('hje_rates').select('*, product_types(name)').order('effective_date', { ascending: false }); break;
       case 'regions': query = supabase.from('regions').select('*').order('name'); break;
       default: query = supabase.from('product_types').select('*');
     }
@@ -78,7 +83,11 @@ const DataMaster = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...initialForm[activeTab] });
+    const defaultForm = { ...initialForm[activeTab] };
+    if (activeTab === 'brands' && isFactoryScoped) {
+      defaultForm.factory_id = factoryId;
+    }
+    setForm(defaultForm);
     setShowModal(true);
   };
 
@@ -338,7 +347,7 @@ const DataMaster = () => {
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik <span className="text-red-500">*</span></label>
-                <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
+                <select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required disabled={isFactoryScoped}>
                   <option value="">Pilih pabrik...</option>
                   {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>

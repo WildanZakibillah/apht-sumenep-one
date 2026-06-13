@@ -1,45 +1,45 @@
+/// Represents a report from the `reports` table.
 class Report {
   final String id;
   final String factoryId;
-  final String reportMonth;
-  final int totalProduction;
-  final int totalOutgoing;
+  final String period;
+  final DateTime? dateSent;
   final String status;
+  final String? statusLabel;
   final DateTime createdAt;
-  final String createdBy;
+  final DateTime updatedAt;
 
   Report({
     required this.id,
     required this.factoryId,
-    required this.reportMonth,
-    required this.totalProduction,
-    required this.totalOutgoing,
+    required this.period,
+    this.dateSent,
     required this.status,
+    this.statusLabel,
     required this.createdAt,
-    required this.createdBy,
+    required this.updatedAt,
   });
 
   factory Report.fromJson(Map<String, dynamic> json) {
     return Report(
       id: json['id'],
       factoryId: json['factory_id'],
-      reportMonth: json['report_month'],
-      totalProduction: json['total_production'],
-      totalOutgoing: json['total_outgoing'],
-      status: json['status'],
+      period: json['period'],
+      dateSent: json['date_sent'] != null ? DateTime.parse(json['date_sent']) : null,
+      status: json['status'] ?? 'pending',
+      statusLabel: json['status_label'],
       createdAt: DateTime.parse(json['created_at']),
-      createdBy: json['created_by'],
+      updatedAt: DateTime.parse(json['updated_at']),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'factory_id': factoryId,
-      'report_month': reportMonth,
-      'total_production': totalProduction,
-      'total_outgoing': totalOutgoing,
+      'period': period,
+      'date_sent': dateSent?.toIso8601String(),
       'status': status,
-      'created_by': createdBy,
+      'status_label': statusLabel,
     };
   }
 }

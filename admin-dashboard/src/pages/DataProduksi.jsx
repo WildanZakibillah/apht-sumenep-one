@@ -7,20 +7,51 @@ import StatCard from '../components/shared/StatCard';
 import { SkeletonCard, SkeletonChart } from '../components/shared/Skeleton';
 import MonthPicker from '../components/shared/MonthPicker';
 import SearchBar from '../components/shared/SearchBar';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell, Legend
-} from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Bar, AreaChart, Area, Legend } from 'recharts';
+import { useRoleAccess } from '../hooks/useRoleAccess';
+
+const ProdTooltip = ({ active, payload, isDark }) => {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div
+      className="rounded-lg shadow-lg border text-xs px-3 py-2 min-w-[180px]"
+      style={{
+        backgroundColor: isDark ? '#1f2937' : '#fff',
+        borderColor: isDark ? '#374151' : '#e5e7eb',
+        color: isDark ? '#f3f4f6' : '#111827',
+      }}
+    >
+      <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
+      <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span className="opacity-80">Batang</span>
+        </span>
+        <span className="font-semibold">{Number(d.batang || 0).toLocaleString('id-ID')} btg</span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span className="opacity-80">Kemasan</span>
+        </span>
+        <span className="font-semibold">{Number(d.kemasan || 0).toLocaleString('id-ID')} kemasan</span>
+      </div>
+    </div>
+  );
+};
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
 
 const DataProduksi = () => {
   const { isDark } = useTheme();
   const { ready } = useAuth();
+  const { scopeQuery, isFactoryScoped, factoryId, isDirektur } = useRoleAccess();
   const [productions, setProductions] = useState([]);
   const [factories, setFactories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedFactory, setSelectedFactory] = useState('all');
+  const [selectedFactory, setSelectedFactory] = useState(isFactoryScoped ? factoryId : 'all');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [tableSearch, setTableSearch] = useState('');
 
@@ -30,8 +61,8 @@ const DataProduksi = () => {
       setLoading(true);
       try {
         const [prodRes, factRes] = await Promise.all([
-          supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false }),
-          supabase.from('factories').select('id, name, code, status').order('name'),
+          scopeQuery(supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false })),
+          scopeQuery(supabase.from('factories').select('id, name, code, status').order('name'), 'id'),
         ]);
         if (prodRes.data) setProductions(prodRes.data);
         if (factRes.data) setFactories(factRes.data);
@@ -42,6 +73,9 @@ const DataProduksi = () => {
     };
     fetchData();
   }, [ready]);
+
+  // Factory name for direktur context
+  const factoryName = isDirektur && factories.length > 0 ? factories[0]?.name : null;
 
   // Filter by selected factory
   const filtered = useMemo(() => {
@@ -60,24 +94,27 @@ const DataProduksi = () => {
   const totalEntries = thisMonth.length;
   const uniqueBrands = [...new Set(thisMonth.map((p) => p.merek))].length;
 
-  // Daily production trend (last 30 days)
+  // Daily production trend (selected month)
   const dailyTrend = useMemo(() => {
     const days = {};
-    const now = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      days[key] = { date: key, label: d.getDate().toString(), kemasan: 0, batang: 0 };
+    
+    // Parse selectedMonth (e.g. "2026-06")
+    const [year, month] = selectedMonth.split('-');
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${year}-${month}-${String(i).padStart(2, '0')}`;
+      days[dateStr] = { date: dateStr, label: i.toString(), kemasan: 0, batang: 0 };
     }
-    filtered.forEach((p) => {
+
+    thisMonth.forEach((p) => {
       if (days[p.doc_date]) {
         days[p.doc_date].kemasan += p.jumlah_kemasan || 0;
         days[p.doc_date].batang += p.jumlah_isi || 0;
       }
     });
     return Object.values(days);
-  }, [filtered]);
+  }, [thisMonth, selectedMonth]);
 
   // Production by category (pie)
   const byCategory = useMemo(() => {
@@ -127,39 +164,6 @@ const DataProduksi = () => {
     text: isDark ? '#6b7280' : '#9ca3af',
   };
 
-  // Custom tooltip for "Produksi per Pabrik" (matches Beranda): name + batang + kemasan
-  const ProdTooltip = ({ active, payload }) => {
-    if (!active || !payload || !payload.length) return null;
-    const d = payload[0].payload;
-    return (
-      <div
-        className="rounded-lg shadow-lg border text-xs px-3 py-2 min-w-[180px]"
-        style={{
-          backgroundColor: isDark ? '#1f2937' : '#fff',
-          borderColor: isDark ? '#374151' : '#e5e7eb',
-          color: isDark ? '#f3f4f6' : '#111827',
-        }}
-      >
-        <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
-        <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
-        <div className="flex items-center justify-between gap-3 mb-1">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            <span className="opacity-80">Batang</span>
-          </span>
-          <span className="font-semibold">{Number(d.batang || 0).toLocaleString('id-ID')} btg</span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="opacity-80">Kemasan</span>
-          </span>
-          <span className="font-semibold">{Number(d.kemasan || 0).toLocaleString('id-ID')} kemasan</span>
-        </div>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <div className="space-y-5 max-w-[1400px] mx-auto">
@@ -174,18 +178,20 @@ const DataProduksi = () => {
 
   return (
     <div className="space-y-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Rekap Produksi Seluruh Pabrik" description="Monitoring output produksi harian dari seluruh pabrik.">
+      <PageHeader title={isDirektur ? `Rekap Produksi ${factoryName || ''}` : 'Rekap Produksi Seluruh Pabrik'} description={isDirektur ? `Monitoring output produksi harian pabrik ${factoryName || 'Anda'}.` : 'Monitoring output produksi harian dari seluruh pabrik.'}>
         <MonthPicker value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
-        <select
-          value={selectedFactory}
-          onChange={(e) => setSelectedFactory(e.target.value)}
-          className="text-sm border border-gray-100 dark:border-gray-800 shadow-sm rounded-full px-4 py-2.5 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 focus:outline-none focus:border-blue-400 min-w-[180px] cursor-pointer"
-        >
-          <option value="all">Semua Pabrik</option>
-          {factories.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
-        </select>
+        {!isFactoryScoped && (
+          <select
+            value={selectedFactory}
+            onChange={(e) => setSelectedFactory(e.target.value)}
+            className="text-sm border border-gray-100 dark:border-gray-800 shadow-sm rounded-full px-4 py-2.5 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 focus:outline-none focus:border-blue-400 min-w-[180px] cursor-pointer"
+          >
+            <option value="all">Semua Pabrik</option>
+            {factories.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        )}
       </PageHeader>
 
       {/* Stats */}
@@ -203,7 +209,7 @@ const DataProduksi = () => {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Tren Produksi Harian</h3>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">30 hari terakhir (kemasan)</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Bulan terpilih (kemasan)</p>
             </div>
             <div className="flex items-center gap-4 text-xs">
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span><span className="text-gray-500 dark:text-gray-400">Kemasan</span></span>
@@ -254,26 +260,28 @@ const DataProduksi = () => {
         </div>
       </div>
 
-      {/* Row 2: Bar Per Pabrik (2/3) + Top Merek (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Bar: Per Factory */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-          <h3 className="text-[15px] font-bold text-gray-900 dark:text-white mb-1">Produksi per Pabrik</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Output bulan ini (kemasan) — kode pabrik</p>
-          {perFactory.length === 0 ? (
-            <div className="flex items-center justify-center py-12 text-sm text-gray-400 dark:text-gray-500">Belum ada data</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={perFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-                <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
-                <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
-                <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={<ProdTooltip />} />
-                <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      {/* Row 2: Bar Per Pabrik (Admin) + Top Merek */}
+      <div className={`grid grid-cols-1 ${isFactoryScoped ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-5`}>
+        {/* Bar: Per Factory (Admin Only) */}
+        {!isFactoryScoped && (
+          <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+            <h3 className="text-[15px] font-bold text-gray-900 dark:text-white mb-1">Produksi per Pabrik</h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Output bulan ini (kemasan) — kode pabrik</p>
+            {perFactory.length === 0 ? (
+              <div className="flex items-center justify-center py-12 text-sm text-gray-400 dark:text-gray-500">Belum ada data</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={perFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
+                  <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
+                  <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
+                  <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={(props) => <ProdTooltip {...props} isDark={isDark} />} />
+                  <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )}
 
         {/* Top Brands */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">

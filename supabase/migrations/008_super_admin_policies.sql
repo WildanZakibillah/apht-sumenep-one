@@ -6,36 +6,59 @@
 -- Helper function: check if current user is super_admin
 CREATE OR REPLACE FUNCTION public.is_super_admin()
 RETURNS BOOLEAN AS $$
+DECLARE
+  is_admin BOOLEAN;
 BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM profiles
-    WHERE id = auth.uid()
-    AND role = 'super_admin'
-  );
+  IF current_setting('app.checking_super_admin', true) = 'true' THEN
+    RETURN false;
+  END IF;
+  PERFORM set_config('app.checking_super_admin', 'true', true);
+  SELECT (role = 'super_admin') INTO is_admin FROM public.profiles WHERE id = auth.uid();
+  PERFORM set_config('app.checking_super_admin', 'false', true);
+  RETURN COALESCE(is_admin, false);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.checking_super_admin', 'false', true);
+  RAISE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Helper function: get current user role
 CREATE OR REPLACE FUNCTION public.user_role()
 RETURNS TEXT AS $$
+DECLARE
+  r TEXT;
 BEGIN
-  RETURN (
-    SELECT role FROM profiles
-    WHERE id = auth.uid()
-  );
+  IF current_setting('app.checking_role', true) = 'true' THEN
+    RETURN NULL;
+  END IF;
+  PERFORM set_config('app.checking_role', 'true', true);
+  SELECT role INTO r FROM public.profiles WHERE id = auth.uid();
+  PERFORM set_config('app.checking_role', 'false', true);
+  RETURN r;
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.checking_role', 'false', true);
+  RAISE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Helper function: get current user factory_id
 CREATE OR REPLACE FUNCTION public.user_factory_id()
 RETURNS UUID AS $$
+DECLARE
+  fid UUID;
 BEGIN
-  RETURN (
-    SELECT factory_id FROM profiles
-    WHERE id = auth.uid()
-  );
+  IF current_setting('app.checking_factory', true) = 'true' THEN
+    RETURN NULL;
+  END IF;
+  PERFORM set_config('app.checking_factory', 'true', true);
+  SELECT factory_id INTO fid FROM public.profiles WHERE id = auth.uid();
+  PERFORM set_config('app.checking_factory', 'false', true);
+  RETURN fid;
+EXCEPTION WHEN OTHERS THEN
+  PERFORM set_config('app.checking_factory', 'false', true);
+  RAISE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================
 -- Enable RLS on all tables
@@ -81,19 +104,23 @@ CREATE POLICY "Authenticated users can read warehouses" ON warehouses
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
 -- ============================================================
--- PROFILES: Super admin full access, users can read own
+-- PROFILES: Semua user bisa read, Super admin bisa kelola semua, user bisa update miliknya
 -- ============================================================
-DROP POLICY IF EXISTS "Super admin full access profiles" ON profiles;
-CREATE POLICY "Super admin full access profiles" ON profiles
-  FOR ALL USING (public.is_super_admin());
+DROP POLICY IF EXISTS "Profiles are viewable by all authenticated users" ON profiles;
+CREATE POLICY "Profiles are viewable by all authenticated users" ON profiles
+  FOR SELECT USING (auth.role() = 'authenticated');
 
-DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
-CREATE POLICY "Users can read own profile" ON profiles
-  FOR SELECT USING (id = auth.uid());
+DROP POLICY IF EXISTS "Super admins can insert profiles" ON profiles;
+CREATE POLICY "Super admins can insert profiles" ON profiles
+  FOR INSERT WITH CHECK (public.is_super_admin());
 
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-CREATE POLICY "Users can update own profile" ON profiles
-  FOR UPDATE USING (id = auth.uid());
+DROP POLICY IF EXISTS "Super admins can delete profiles" ON profiles;
+CREATE POLICY "Super admins can delete profiles" ON profiles
+  FOR DELETE USING (public.is_super_admin());
+
+DROP POLICY IF EXISTS "Users and super admins can update profiles" ON profiles;
+CREATE POLICY "Users and super admins can update profiles" ON profiles
+  FOR UPDATE USING (id = auth.uid() OR public.is_super_admin());
 
 -- ============================================================
 -- REGIONS: Super admin full access, all can read

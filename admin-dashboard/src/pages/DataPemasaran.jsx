@@ -11,6 +11,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
 import MonthPicker from '../components/shared/MonthPicker';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useRoleAccess } from '../hooks/useRoleAccess';
 
 const emptyGoodsForm = {
   transaction_date: new Date().toISOString().slice(0, 10),
@@ -28,6 +29,7 @@ const emptyDistForm = { name: '', region_id: '', contact_info: '' };
 const DataPemasaran = () => {
   const { isDark } = useTheme();
   const { user, ready } = useAuth();
+  const { scopeQuery, isFactoryScoped, factoryId, isDirektur } = useRoleAccess();
   const toast = useToast();
   const [outgoingGoods, setOutgoingGoods] = useState([]);
   const [distributors, setDistributors] = useState([]);
@@ -37,6 +39,7 @@ const DataPemasaran = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedFactory, setSelectedFactory] = useState(isFactoryScoped ? factoryId : 'all');
 
   // Goods modal
   const [showGoodsModal, setShowGoodsModal] = useState(false);
@@ -55,10 +58,10 @@ const DataPemasaran = () => {
   const loadData = async () => {
     setLoading(true);
     const [g, d, f, p, r] = await Promise.all([
-      supabase.from('outgoing_goods').select('*, factories(name), regions(name), products(brands(name))').order('transaction_date', { ascending: false }).limit(200),
+      scopeQuery(supabase.from('outgoing_goods').select('*, factories(name), regions(name), products(brands(name))').order('transaction_date', { ascending: false }).limit(200)),
       supabase.from('distributors').select('*, regions(name)').order('name'),
-      supabase.from('factories').select('id, name').order('name'),
-      supabase.from('products').select('id, brand_id, brands(name), factories(name)').order('id'),
+      scopeQuery(supabase.from('factories').select('id, name').order('name'), 'id'),
+      scopeQuery(supabase.from('products').select('id, brand_id, brands(name), factories(name)').order('id')),
       supabase.from('regions').select('id, name').order('name'),
     ]);
     if (g.error) toast.error('Gagal memuat transaksi: ' + g.error.message);
@@ -74,11 +77,15 @@ const DataPemasaran = () => {
     if (ready) loadData();
   }, [ready]); // eslint-disable-line
 
+  // Factory name for direktur context
+  const factoryName = isDirektur && factories.length > 0 ? factories[0]?.name : null;
+
   const filteredGoods = outgoingGoods.filter((g) => {
+    const matchFactory = selectedFactory === 'all' || g.factory_id === selectedFactory;
     const matchMonth = g.transaction_date?.startsWith(selectedMonth);
     const q = search.trim().toLowerCase();
     const matchSearch = !q || g.customer_name?.toLowerCase().includes(q) || g.factories?.name?.toLowerCase().includes(q) || g.regions?.name?.toLowerCase().includes(q);
-    return matchMonth && matchSearch;
+    return matchFactory && matchMonth && matchSearch;
   });
 
   const totalVolume = filteredGoods.reduce((sum, g) => sum + (g.volume || 0), 0);
@@ -102,7 +109,7 @@ const DataPemasaran = () => {
   const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
   // Pie data: volume per region
-  const regionPieData = useMemo(() => {
+  const regionPieData = (() => {
     const map = {};
     filteredGoods.forEach((g) => {
       const region = g.regions?.name || 'Lainnya';
@@ -112,12 +119,12 @@ const DataPemasaran = () => {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-  }, [filteredGoods]);
+  })();
 
   // ============ Goods CRUD ============
   const openGoodsCreate = () => {
     setEditingGoods(null);
-    setGoodsForm(emptyGoodsForm);
+    setGoodsForm({ ...emptyGoodsForm, factory_id: isFactoryScoped ? factoryId : '' });
     setShowGoodsModal(true);
   };
   const openGoodsEdit = (g) => {
@@ -251,8 +258,20 @@ const DataPemasaran = () => {
 
   return (
     <div className="space-y-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Distribusi & Penjualan" description="Pantau distribusi dan penjualan produk ke seluruh wilayah.">
+      <PageHeader title={isDirektur ? `Pemasaran ${factoryName || ''}` : 'Distribusi & Penjualan'} description={isDirektur ? `Pantau distribusi dan penjualan produk pabrik ${factoryName || 'Anda'}.` : 'Pantau distribusi dan penjualan produk ke seluruh wilayah.'}>
         <MonthPicker value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
+        {!isFactoryScoped && (
+          <select
+            value={selectedFactory}
+            onChange={(e) => setSelectedFactory(e.target.value)}
+            className="text-sm border border-gray-100 dark:border-gray-800 shadow-sm rounded-full px-4 py-2.5 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 focus:outline-none focus:border-blue-400 min-w-[180px] cursor-pointer"
+          >
+            <option value="all">Semua Pabrik</option>
+            {factories.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        )}
         <button onClick={openGoodsCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
           <span className="material-symbols-outlined text-[18px]">add</span>
           Transaksi Baru
@@ -332,7 +351,7 @@ const DataPemasaran = () => {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <h3 className="text-[15px] font-bold text-gray-900 dark:text-white">Transaksi Barang Keluar</h3>
-          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari customer, pabrik, wilayah..." className="md:w-96" />
+          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder={isFactoryScoped ? "Cari customer, wilayah..." : "Cari customer, pabrik, wilayah..."} className="md:w-96" />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -340,7 +359,7 @@ const DataPemasaran = () => {
               <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Tanggal</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Customer</th>
-                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>
+                {!isFactoryScoped && <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>}
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Volume</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Nilai</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Bayar</th>
@@ -355,7 +374,7 @@ const DataPemasaran = () => {
                   <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                     <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">{item.transaction_date}</td>
                     <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 dark:text-white">{item.customer_name}</td>
-                    <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-gray-400">{item.factories?.name || '-'}</td>
+                    {!isFactoryScoped && <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-gray-400">{item.factories?.name || '-'}</td>}
                     <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">{Number(item.volume).toLocaleString()}</td>
                     <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium text-right">{formatCurrency(item.total_value)}</td>
                     <td className="px-5 py-3.5">
@@ -443,7 +462,7 @@ const DataPemasaran = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik <span className="text-red-500">*</span></label>
-              <select value={goodsForm.factory_id} onChange={(e) => setGoodsForm({ ...goodsForm, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
+              <select value={goodsForm.factory_id} onChange={(e) => setGoodsForm({ ...goodsForm, factory_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required disabled={isFactoryScoped}>
                 <option value="">Pilih pabrik...</option>
                 {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
