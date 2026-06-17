@@ -258,34 +258,38 @@ CREATE POLICY "brands_delete" ON public.brands
   FOR DELETE USING (get_my_role() = 'super_admin');
 
 -- ============================================================
--- 9. PRODUCTS
+-- 9. CIGARETTES
 -- ============================================================
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cigarettes ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "products_select" ON public.products;
-DROP POLICY IF EXISTS "products_insert" ON public.products;
-DROP POLICY IF EXISTS "products_update" ON public.products;
-DROP POLICY IF EXISTS "products_delete" ON public.products;
+DROP POLICY IF EXISTS "products_select" ON public.cigarettes;
+DROP POLICY IF EXISTS "products_insert" ON public.cigarettes;
+DROP POLICY IF EXISTS "products_update" ON public.cigarettes;
+DROP POLICY IF EXISTS "products_delete" ON public.cigarettes;
+DROP POLICY IF EXISTS "cigarettes_select" ON public.cigarettes;
+DROP POLICY IF EXISTS "cigarettes_insert" ON public.cigarettes;
+DROP POLICY IF EXISTS "cigarettes_update" ON public.cigarettes;
+DROP POLICY IF EXISTS "cigarettes_delete" ON public.cigarettes;
 
-CREATE POLICY "products_select" ON public.products
+CREATE POLICY "cigarettes_select" ON public.cigarettes
   FOR SELECT USING (
     get_my_role() = 'super_admin'
     OR factory_id = get_my_factory_id()
   );
 
-CREATE POLICY "products_insert" ON public.products
+CREATE POLICY "cigarettes_insert" ON public.cigarettes
   FOR INSERT WITH CHECK (
     get_my_role() = 'super_admin'
     OR factory_id = get_my_factory_id()
   );
 
-CREATE POLICY "products_update" ON public.products
+CREATE POLICY "cigarettes_update" ON public.cigarettes
   FOR UPDATE USING (
     get_my_role() = 'super_admin'
     OR factory_id = get_my_factory_id()
   );
 
-CREATE POLICY "products_delete" ON public.products
+CREATE POLICY "cigarettes_delete" ON public.cigarettes
   FOR DELETE USING (get_my_role() = 'super_admin');
 
 -- ============================================================

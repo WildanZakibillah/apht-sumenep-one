@@ -23,6 +23,7 @@ export const getNavSections = (isFactoryScoped) => {
         { id: 'excise', icon: 'confirmation_number', label: 'Pantau Cukai', path: '/dashboard/pantau-cukai' },
         { id: 'cukai-requests', icon: 'assignment', label: 'Pengajuan Cukai', path: '/dashboard/pengajuan-cukai' },
         { id: 'marketing', icon: 'storefront', label: 'Data Pemasaran', path: '/dashboard/data-pemasaran' },
+        { id: 'stock', icon: 'inventory', label: 'Manajemen Stok', path: '/dashboard/data-stok' },
       ],
     },
     {

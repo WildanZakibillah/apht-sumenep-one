@@ -9,6 +9,7 @@ import PantauCukai from './PantauCukai';
 import PengajuanCukai from './PengajuanCukai';
 import DataPemasaran from './DataPemasaran';
 import DataMaster from './DataMaster';
+import DataStok from './DataStok';
 import ManajemenUser from './ManajemenUser';
 import Notifikasi from './Notifikasi';
 import PengaturanAkun from './PengaturanAkun';
@@ -25,6 +26,7 @@ const Dashboard = () => {
         <Route path="/pantau-cukai" element={<PantauCukai />} />
         <Route path="/pengajuan-cukai" element={<PengajuanCukai />} />
         <Route path="/data-pemasaran" element={<DataPemasaran />} />
+        <Route path="/data-stok" element={<DataStok />} />
         <Route path="/data-master" element={<DataMaster />} />
         {!isFactoryScoped && <Route path="/manajemen-pengguna" element={<ManajemenUser />} />}
         <Route path="/notifikasi" element={<Notifikasi />} />

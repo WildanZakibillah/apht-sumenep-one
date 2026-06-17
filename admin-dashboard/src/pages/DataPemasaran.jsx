@@ -58,10 +58,10 @@ const DataPemasaran = () => {
   const loadData = async () => {
     setLoading(true);
     const [g, d, f, p, r] = await Promise.all([
-      scopeQuery(supabase.from('outgoing_goods').select('*, factories(name), regions(name), products(brands(name))').order('transaction_date', { ascending: false }).limit(200)),
+      scopeQuery(supabase.from('outgoing_goods').select('*, factories(name), regions(name), cigarettes(product_name, variant, brands(name))').order('transaction_date', { ascending: false }).limit(200)),
       supabase.from('distributors').select('*, regions(name)').order('name'),
       scopeQuery(supabase.from('factories').select('id, name').order('name'), 'id'),
-      scopeQuery(supabase.from('products').select('id, brand_id, brands(name), factories(name)').order('id')),
+      scopeQuery(supabase.from('cigarettes').select('id, brand_id, product_name, variant, brands(name), factories(name)').order('id')),
       supabase.from('regions').select('id, name').order('name'),
     ]);
     if (g.error) toast.error('Gagal memuat transaksi: ' + g.error.message);
@@ -471,7 +471,11 @@ const DataPemasaran = () => {
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Produk <span className="text-red-500">*</span></label>
               <select value={goodsForm.product_id} onChange={(e) => setGoodsForm({ ...goodsForm, product_id: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
                 <option value="">Pilih produk...</option>
-                {products.map((p) => <option key={p.id} value={p.id}>{p.brands?.name || '-'} ({p.factories?.name || '-'})</option>)}
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.product_name || p.brands?.name || '-'} {p.variant ? `(${p.variant})` : ''} — {p.brands?.name || '-'} ({p.factories?.name || '-'})
+                  </option>
+                ))}
               </select>
             </div>
           </div>

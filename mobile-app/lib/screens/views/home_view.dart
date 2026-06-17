@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../utils/wib_helper.dart';
 import '../activity_detail_screen.dart';
 import '../notification_screen.dart';
+import '../profile_detail_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../services/report_pdf_service.dart';
@@ -30,8 +31,8 @@ class _HomeViewState extends State<HomeView> {
   int _totalKeluar = 0;
   List<Map<String, dynamic>> _todayActivities = [];
   bool _isLoading = true;
+  Map<String, dynamic>? _factoryData;
 
-  @override
   @override
   void initState() {
     super.initState();
@@ -231,6 +232,13 @@ class _HomeViewState extends State<HomeView> {
 
       todayActivities.sort((a, b) => (b['time'] as String).compareTo(a['time'] as String));
 
+      // Fetch factory info
+      final factoryRes = await client
+          .from('factories')
+          .select()
+          .eq('id', factoryId)
+          .maybeSingle();
+
       if (mounted) {
         setState(() {
           _totalProduksi = totalProd;
@@ -239,6 +247,7 @@ class _HomeViewState extends State<HomeView> {
           _totalPengeluaranCukai = totalPengeluaranCukai;
           _totalKeluar = totalKeluar;
           _todayActivities = todayActivities;
+          _factoryData = factoryRes;
           _isLoading = false;
         });
       }
@@ -287,6 +296,50 @@ class _HomeViewState extends State<HomeView> {
     );
   }
 
+  Widget _buildAvatarWidget(String? avatarUrl, double size, bool isDark) {
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(shape: BoxShape.circle),
+        child: ClipOval(
+          child: Image.network(
+            avatarUrl,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildDefaultAvatar(size, isDark),
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(
+                child: SizedBox(
+                  width: size * 0.4,
+                  height: size * 0.4,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    return _buildDefaultAvatar(size, isDark);
+  }
+
+  Widget _buildDefaultAvatar(double size, bool isDark) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [AppTheme.primary, AppTheme.primary.withValues(alpha: 0.75)],
+        ),
+      ),
+      child: Icon(Icons.person_rounded, color: Colors.white, size: size * 0.5),
+    );
+  }
+
   PreferredSizeWidget _buildAppBar(BuildContext context, bool isDark) {
     final authProvider = context.watch<AuthProvider>();
     final profile = authProvider.profile;
@@ -294,19 +347,29 @@ class _HomeViewState extends State<HomeView> {
     return AppBar(
       backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF6F8FC),
       elevation: 0, scrolledUnderElevation: 0, automaticallyImplyLeading: false, titleSpacing: 18,
-      title: Row(children: [
-        Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primary.withValues(alpha: 0.75)])),
-          child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
+      title: InkWell(
+        onTap: () {
+          if (profile != null) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileDetailScreen(profile: profile, factoryData: _factoryData)));
+          }
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAvatarWidget(profile?.avatarUrl, 44, isDark),
+              const SizedBox(width: 12),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(profile?.fullName ?? 'User', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontWeight: FontWeight.w700, fontSize: 16)),
+                const SizedBox(height: 2),
+                Text(profile != null ? _roleLabel(profile.role) : '', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 11.5)),
+              ]),
+            ],
+          ),
         ),
-        const SizedBox(width: 12),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(profile?.fullName ?? 'User', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontWeight: FontWeight.w700, fontSize: 16)),
-          const SizedBox(height: 2),
-          Text(profile != null ? _roleLabel(profile.role) : '', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 11.5)),
-        ]),
-      ]),
+      ),
       actions: [
         Consumer<NotificationProvider>(
           builder: (context, notifProvider, _) {

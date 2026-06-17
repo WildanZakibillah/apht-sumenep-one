@@ -24,7 +24,11 @@ class _LaporanViewState extends State<LaporanView> {
 
   // Stok data
   List<Map<String, dynamic>> _productions = [];
-  int _totalStok = 0;
+
+  // Actual cigarette inventory stocks
+  List<Map<String, dynamic>> _cigarettes = [];
+  int _totalStockPacks = 0;
+  int _totalStockSticks = 0;
 
   // Cukai data
   List<Map<String, dynamic>> _cukaiUsages = [];
@@ -63,9 +67,22 @@ class _LaporanViewState extends State<LaporanView> {
           .gte('doc_date', startDate)
           .lt('doc_date', endDate)
           .order('created_at', ascending: false);
-      int totalStok = 0;
-      for (final p in prodRes) {
-        totalStok += (p['jumlah_isi'] as int?) ?? 0;
+
+
+      // Cigarette actual stocks
+      final cigsRes = await client
+          .from('cigarettes')
+          .select('*, brands(name)')
+          .eq('factory_id', factoryId)
+          .order('product_name', ascending: true);
+      
+      int totalStockPacks = 0;
+      int totalStockSticks = 0;
+      for (final c in cigsRes) {
+        final stock = (c['stock'] as num?)?.toInt() ?? 0;
+        final sticksPerPack = (c['sticks_per_pack'] as num?)?.toInt() ?? 12;
+        totalStockPacks += stock;
+        totalStockSticks += stock * sticksPerPack;
       }
 
       // Cukai
@@ -86,10 +103,10 @@ class _LaporanViewState extends State<LaporanView> {
         sisaCukai += ((r['quota'] as int) - (r['used'] as int) - ((r['damaged'] as int?) ?? 0));
       }
 
-      // Outgoing
+      // Outgoing (include cigarettes & brands details)
       final outRes = await client
           .from('outgoing_goods')
-          .select()
+          .select('*, cigarettes(*, brands(*))')
           .eq('factory_id', factoryId)
           .gte('transaction_date', startDate)
           .lt('transaction_date', endDate)
@@ -102,11 +119,15 @@ class _LaporanViewState extends State<LaporanView> {
       if (mounted) {
         setState(() {
           _productions = List<Map<String, dynamic>>.from(prodRes);
-          _totalStok = totalStok;
           _cukaiUsages = List<Map<String, dynamic>>.from(cukaiRes);
           _sisaCukai = sisaCukai;
           _outgoingGoods = List<Map<String, dynamic>>.from(outRes);
           _totalKeluar = totalKeluar;
+          
+          _cigarettes = List<Map<String, dynamic>>.from(cigsRes);
+          _totalStockPacks = totalStockPacks;
+          _totalStockSticks = totalStockSticks;
+          
           _isLoading = false;
         });
       }
@@ -170,9 +191,6 @@ class _LaporanViewState extends State<LaporanView> {
     );
   }
 
-  Widget _buildFilterBar(bool isDark) {
-    return const SizedBox.shrink(); // Removed, now integrated into section headers
-  }
 
   Widget _buildSectionHeader(String title, bool isDark) {
     return Row(
@@ -347,19 +365,222 @@ class _LaporanViewState extends State<LaporanView> {
     );
   }
 
+  Widget _buildSubSectionHeader(String title, bool isDark) {
+    return Text(
+      title,
+      style: TextStyle(
+        color: isDark ? Colors.white : AppTheme.onSurface,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  Widget _buildSmallHeroCard({
+    required String title,
+    required String value,
+    required Color color,
+    required Color bgColor,
+    required IconData icon,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : color.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : color.withValues(alpha: 0.8),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: isDark ? Colors.white : color,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCigaretteStockCard(bool isDark, Map<String, dynamic> c) {
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final stock = (c['stock'] as num?)?.toInt() ?? 0;
+    final sticksPerPack = (c['sticks_per_pack'] as num?)?.toInt() ?? 12;
+    final sticks = stock * sticksPerPack;
+    final brandName = c['brands']?['name'] ?? 'Merek';
+    final variantText = c['variant'] != null && c['variant'].toString().isNotEmpty ? ' • ${c['variant']}' : '';
+    
+    Color statusColor;
+    String statusLabel;
+    if (stock == 0) {
+      statusColor = AppTheme.error;
+      statusLabel = 'Habis';
+    } else if (stock <= 100) {
+      statusColor = Colors.orange;
+      statusLabel = 'Menipis';
+    } else {
+      statusColor = const Color(0xFF10B981);
+      statusLabel = 'Aman';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        c['product_name'] ?? '-',
+                        style: TextStyle(
+                          color: isDark ? Colors.white : AppTheme.onSurface,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '$brandName • ${c['cigarette_type'] ?? '-'}$variantText • $sticksPerPack btg/pak',
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                NumberFormat('#,###').format(stock),
+                style: TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                'pak',
+                style: TextStyle(
+                  color: isDark ? Colors.white38 : AppTheme.outline,
+                  fontSize: 10,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '(${NumberFormat('#,###').format(sticks)} btg)',
+                style: TextStyle(
+                  color: isDark ? Colors.white38 : AppTheme.outline,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStokContent(bool isDark) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _buildHeroBanner(
-        title: 'TOTAL PRODUKSI', value: NumberFormat('#,###').format(_totalStok),
-        subtitle: 'Periode ${DateFormat('MMMM yyyy').format(_selectedMonth)}',
-        gradientStart: AppTheme.primaryFixed, gradientEnd: AppTheme.primaryFixedDim,
-        textColor: AppTheme.primary, valueColor: AppTheme.onPrimaryFixed, icon: Icons.inventory_2_outlined,
+      Row(
+        children: [
+          Expanded(
+            child: _buildSmallHeroCard(
+              title: 'TOTAL STOK (PAK)',
+              value: NumberFormat('#,###').format(_totalStockPacks),
+              color: AppTheme.primary,
+              bgColor: AppTheme.primary.withValues(alpha: 0.08),
+              icon: Icons.inventory_2_outlined,
+              isDark: isDark,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildSmallHeroCard(
+              title: 'TOTAL STOK (BTG)',
+              value: NumberFormat('#,###').format(_totalStockSticks),
+              color: const Color(0xFF10B981),
+              bgColor: const Color(0xFF10B981).withValues(alpha: 0.08),
+              icon: Icons.splitscreen_rounded,
+              isDark: isDark,
+            ),
+          ),
+        ],
       ),
+      const SizedBox(height: 24),
+      _buildSubSectionHeader('Stok Produk Saat Ini', isDark),
+      const SizedBox(height: 12),
+      if (_cigarettes.isEmpty)
+        Center(child: Text('Belum ada data persediaan produk', style: TextStyle(color: AppTheme.outline)))
+      else
+        ..._cigarettes.map((c) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildCigaretteStockCard(isDark, c),
+        )),
       const SizedBox(height: 24),
       _buildSectionHeader('Daftar Produksi', isDark),
       const SizedBox(height: 16),
       if (_productions.isEmpty)
-        Center(child: Text('Belum ada data produksi', style: TextStyle(color: AppTheme.outline)))
+        Center(child: Text('Belum ada data produksi bulan ini', style: TextStyle(color: AppTheme.outline)))
       else
         ..._productions.map((p) => Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -521,6 +742,11 @@ class _LaporanViewState extends State<LaporanView> {
     final isKredit = o['payment_method'] == 'kredit';
     final totalValue = (o['total_value'] as num?) ?? 0;
 
+    final cig = o['cigarettes'] as Map<String, dynamic>?;
+    final productName = cig?['product_name'] ?? '-';
+    final brandName = cig?['brands']?['name'] ?? '-';
+    final cigaretteType = cig?['cigarette_type'] ?? '';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -536,9 +762,13 @@ class _LaporanViewState extends State<LaporanView> {
             details: {
               'Tanggal': o['transaction_date'] ?? '-',
               'Pelanggan': o['customer_name'] ?? '-',
+              'Produk / Merek': '$productName ($brandName)',
+              'Jenis Rokok': cigaretteType,
               'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
               'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
               'Pembayaran': isKredit ? 'KREDIT' : 'TUNAI',
+              if (cig?['hje'] != null) 'HJE': 'Rp ${NumberFormat('#,###').format(cig!['hje'])}',
+              if (cig?['excise_rate'] != null) 'Tarif Cukai': 'Rp ${NumberFormat('#,###').format(cig!['excise_rate'])}/btg',
             },
           )));
         },
@@ -548,7 +778,14 @@ class _LaporanViewState extends State<LaporanView> {
           decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Expanded(child: Text(o['customer_name'] ?? '-', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
+              Expanded(
+                child: Text(
+                  '${o['customer_name'] ?? '-'} • $productName ($brandName)',
+                  style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 15, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: isKredit ? AppTheme.secondaryContainer : AppTheme.tertiaryContainer, borderRadius: BorderRadius.circular(20)),

@@ -17,7 +17,7 @@ class AppConstants {
   static const String tableWarehouses = 'warehouses';
   static const String tableProductTypes = 'product_types';
   static const String tableBrands = 'brands';
-  static const String tableProducts = 'products';
+  static const String tableProducts = 'cigarettes';
   static const String tableProductions = 'productions';
   static const String tableCukaiAllocations = 'cukai_allocations';
   static const String tableCukaiUsageLog = 'cukai_usage_log';

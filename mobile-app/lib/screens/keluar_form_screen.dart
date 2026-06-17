@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
+import '../core/constants.dart';
 import '../providers/auth_provider.dart';
 import '../services/outgoing_service.dart';
 import '../utils/wib_helper.dart';
@@ -25,6 +26,8 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
 
   String? _selectedRegionId;
   String? _selectedProductId;
+  String? _stockWarning;
+  String? _packagingBreakdown;
 
   List<Map<String, dynamic>> _regions = [];
   List<Map<String, dynamic>> _products = [];
@@ -32,36 +35,114 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
   @override
   void initState() {
     super.initState();
+    _volumeController.addListener(_calculateTotalValue);
     _loadData();
   }
 
   @override
   void dispose() {
+    _volumeController.removeListener(_calculateTotalValue);
     _customerController.dispose();
     _volumeController.dispose();
     _totalValueController.dispose();
     super.dispose();
   }
 
+  void _calculateTotalValue() {
+    if (_selectedProductId == null) return;
+    try {
+      final product = _products.firstWhere((p) => p['id'] == _selectedProductId);
+      final hje = (product['hje'] as num?)?.toDouble() ?? 0.0;
+      final volume = double.tryParse(_volumeController.text) ?? 0.0;
+      final total = volume * hje;
+      
+      final formatter = NumberFormat('#,###');
+      _totalValueController.text = formatter.format(total.toInt());
+
+      // Stock warning logic
+      final stockPacks = (product['stock'] as num?)?.toInt() ?? 0;
+      final sticksPerPack = (product['sticks_per_pack'] as num?)?.toInt() ?? 12;
+      final stockSticks = stockPacks * sticksPerPack;
+      if (volume > stockSticks) {
+        setState(() {
+          _stockWarning = 'Peringatan: Volume (${volume.toInt()} btg) melebihi stok yang tersedia ($stockSticks btg / $stockPacks pak)!';
+        });
+      } else {
+        setState(() {
+          _stockWarning = null;
+        });
+      }
+
+      // Packaging breakdown logic
+      final volumeInt = volume.toInt();
+      if (volumeInt > 0) {
+        final packsPerSlop = (product['packs_per_slop'] as num?)?.toInt() ?? 10;
+        final slopsPerCarton = (product['slops_per_carton'] as num?)?.toInt() ?? 20;
+
+        final sticksPerSlop = sticksPerPack * packsPerSlop;
+        final sticksPerCarton = sticksPerSlop * slopsPerCarton;
+
+        int remainingSticks = volumeInt;
+
+        final cartons = remainingSticks ~/ sticksPerCarton;
+        remainingSticks %= sticksPerCarton;
+
+        final slops = remainingSticks ~/ sticksPerSlop;
+        remainingSticks %= sticksPerSlop;
+
+        final packs = remainingSticks ~/ sticksPerPack;
+        remainingSticks %= sticksPerPack;
+
+        final parts = <String>[];
+        if (cartons > 0) parts.add('$cartons Karton');
+        if (slops > 0) parts.add('$slops Slop');
+        if (packs > 0) parts.add('$packs Pak');
+        if (remainingSticks > 0) parts.add('$remainingSticks Batang');
+
+        setState(() {
+          _packagingBreakdown = 'Setara dengan: ${parts.join(", ")}';
+        });
+      } else {
+        setState(() {
+          _packagingBreakdown = null;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadData() async {
     final auth = context.read<AuthProvider>();
     final factoryId = auth.profile?.factoryId;
 
-    final regionsRes = await Supabase.instance.client.from('regions').select('id, name');
-    
-    List<dynamic> productsRes = [];
-    if (factoryId != null) {
-      productsRes = await Supabase.instance.client
-          .from('products')
-          .select('id, hje, brands(name), product_types(category)')
-          .eq('factory_id', factoryId);
-    }
+    try {
+      final regionsRes = await Supabase.instance.client.from('regions').select('id, name');
+      
+      List<dynamic> productsRes = [];
+      if (factoryId != null) {
+        productsRes = await Supabase.instance.client
+            .from(AppConstants.tableProducts)
+            .select('id, hje, sticks_per_pack, packs_per_slop, slops_per_carton, product_name, product_code, variant, satuan, stock, excise_rate, brands(name, status), product_types(category)')
+            .eq('factory_id', factoryId);
+      }
 
-    if (mounted) {
-      setState(() {
-        _regions = List<Map<String, dynamic>>.from(regionsRes);
-        _products = List<Map<String, dynamic>>.from(productsRes);
-      });
+      if (mounted) {
+        setState(() {
+          _regions = List<Map<String, dynamic>>.from(regionsRes);
+          
+          final allProducts = List<Map<String, dynamic>>.from(productsRes);
+          // Filter to only display active brands
+          _products = allProducts.where((p) {
+            final brand = p['brands'] as Map<String, dynamic>?;
+            return brand != null && brand['status'] == 'active';
+          }).toList();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat data: $e'), backgroundColor: AppTheme.error),
+        );
+      }
     }
   }
 
@@ -186,6 +267,20 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
           _buildProductDropdown(isDark),
           const SizedBox(height: 16),
           _buildInput(isDark: isDark, label: 'Volume (Batang)', hintText: '0', controller: _volumeController, keyboardType: TextInputType.number),
+          if (_packagingBreakdown != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _packagingBreakdown!,
+              style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+          if (_stockWarning != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _stockWarning!,
+              style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ],
           const SizedBox(height: 16),
           _buildInput(isDark: isDark, label: 'Total Nilai (Rp)', hintText: '0', controller: _totalValueController, keyboardType: TextInputType.number),
           const SizedBox(height: 20),
@@ -270,6 +365,13 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
     final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
     final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
 
+    Map<String, dynamic>? selectedProduct;
+    if (_selectedProductId != null) {
+      try {
+        selectedProduct = _products.firstWhere((p) => p['id'] == _selectedProductId);
+      } catch (_) {}
+    }
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Produk', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
       const SizedBox(height: 6),
@@ -280,10 +382,19 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
         dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
         items: _products.map((p) {
           final brandName = p['brands']?['name'] ?? 'Produk';
-          final category = p['product_types']?['category'] ?? '';
-          return DropdownMenuItem(value: p['id'] as String, child: Text('$brandName ($category)'));
+          final productName = p['product_name'] ?? '';
+          final stock = p['stock'] ?? 0;
+          return DropdownMenuItem(
+            value: p['id'] as String,
+            child: Text('$productName ($brandName) — Stok: $stock pak'),
+          );
         }).toList(),
-        onChanged: (v) => setState(() => _selectedProductId = v),
+        onChanged: (v) {
+          setState(() {
+            _selectedProductId = v;
+            _calculateTotalValue();
+          });
+        },
         style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
         icon: Icon(Icons.keyboard_arrow_down_rounded, color: isDark ? Colors.white38 : AppTheme.outline),
         decoration: InputDecoration(
@@ -294,6 +405,13 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
         ),
       ),
+      if (selectedProduct != null) ...[
+        const SizedBox(height: 6),
+        Text(
+          'Stok Tersedia: ${(selectedProduct['stock'] ?? 0)} pak (${((selectedProduct['stock'] ?? 0) * (selectedProduct['sticks_per_pack'] ?? 12))} btg) | Cukai: Rp ${NumberFormat('#,###').format(selectedProduct['excise_rate'] ?? 0)}/btg',
+          style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+      ]
     ]);
   }
 

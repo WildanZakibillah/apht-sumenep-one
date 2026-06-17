@@ -112,6 +112,50 @@ class _ProfilViewState extends State<ProfilView> {
     return Text(text, style: TextStyle(color: isDark ? Colors.white38 : AppTheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0));
   }
 
+  Widget _buildAvatarWidget(String? avatarUrl, double size, bool isDark) {
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(shape: BoxShape.circle),
+        child: ClipOval(
+          child: Image.network(
+            avatarUrl,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildDefaultAvatar(size, isDark),
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(
+                child: SizedBox(
+                  width: size * 0.4,
+                  height: size * 0.4,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+    return _buildDefaultAvatar(size, isDark);
+  }
+
+  Widget _buildDefaultAvatar(double size, bool isDark) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [AppTheme.primary, AppTheme.primary.withValues(alpha: 0.75)],
+        ),
+      ),
+      child: Icon(Icons.person_rounded, color: Colors.white, size: size * 0.5),
+    );
+  }
+
   Widget _buildUserCard(bool isDark, Color cardBg, Color cardBorder, profile) {
     return InkWell(
       onTap: () {
@@ -124,11 +168,7 @@ class _ProfilViewState extends State<ProfilView> {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
         child: Row(children: [
-          Container(
-            width: 64, height: 64,
-            decoration: BoxDecoration(gradient: LinearGradient(colors: [AppTheme.primary, AppTheme.primary.withValues(alpha: 0.7)]), shape: BoxShape.circle),
-            child: const Icon(Icons.person_rounded, size: 34, color: Colors.white),
-          ),
+          _buildAvatarWidget(profile?.avatarUrl, 64, isDark),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(profile?.fullName ?? 'User', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 18, fontWeight: FontWeight.w700)),
@@ -179,13 +219,60 @@ class _ProfilViewState extends State<ProfilView> {
   }
 
   Widget _buildFactoryInfoCard(bool isDark, Color cardBg, Color cardBorder, Color divider) {
+    final logoUrl = _factoryData?['logo_url'] as String?;
+    final latitude = _factoryData?['latitude'];
+    final longitude = _factoryData?['longitude'];
+    final coordinatesText = (latitude != null && longitude != null) ? '$latitude, $longitude' : '-';
+
     return Container(
       decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
       child: Column(children: [
+        if (logoUrl != null && logoUrl.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: divider),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Image.network(
+                      logoUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Icon(Icons.factory_outlined, color: AppTheme.primary, size: 40),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: divider),
+        ],
         _buildInfoRow('Nama Pabrik', _factoryData?['name'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Kode', _factoryData?['code'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Kode Pabrik', _factoryData?['code'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('NPPBKC', _factoryData?['nppbkc'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('NIB', _factoryData?['nib'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('NPWP', _factoryData?['npwp'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Pemilik', _factoryData?['owner_name'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Direktur', _factoryData?['director_name'] ?? '-', isDark, divider, hasBorder: true),
         _buildInfoRow('Golongan', _factoryData?['golongan'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Telepon Pabrik', _factoryData?['phone'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Email Pabrik', _factoryData?['email'] ?? '-', isDark, divider, hasBorder: true),
         _buildInfoRow('Alamat', _factoryData?['address'] ?? '-', isDark, divider, hasBorder: true),
+        _buildInfoRow('Koordinat', coordinatesText, isDark, divider, hasBorder: true),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

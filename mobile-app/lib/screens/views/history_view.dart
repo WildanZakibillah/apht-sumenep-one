@@ -162,7 +162,7 @@ class _HistoryViewState extends State<HistoryView> {
     try {
       final outgoing = await client
           .from('outgoing_goods')
-          .select()
+          .select('*, cigarettes(*, brands(*))')
           .eq('factory_id', factoryId)
           .gte('created_at', startDate)
           .lt('created_at', endDate)
@@ -171,8 +171,12 @@ class _HistoryViewState extends State<HistoryView> {
 
       for (final o in outgoing) {
         final totalValue = (o['total_value'] as num?) ?? 0;
+        final cig = o['cigarettes'] as Map<String, dynamic>?;
+        final productName = cig?['product_name'] ?? '-';
+        final brandName = cig?['brands']?['name'] ?? '-';
+
         items.add(_HistoryItem(
-          title: 'Keluar → ${o['customer_name']}',
+          title: 'Keluar → ${o['customer_name']} • $productName ($brandName)',
           date: _formatDate(o['created_at']),
           value: '${NumberFormat('#,###').format(o['volume'])} btg',
           valueColor: AppTheme.error,
@@ -183,9 +187,13 @@ class _HistoryViewState extends State<HistoryView> {
           details: {
             'Tanggal': o['transaction_date'] ?? '-',
             'Pelanggan': o['customer_name'] ?? '-',
+            'Produk / Merek': '$productName ($brandName)',
+            'Jenis Rokok': cig?['cigarette_type'] ?? '-',
             'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
             'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
             'Pembayaran': (o['payment_method'] as String?)?.toUpperCase() ?? '-',
+            if (cig?['hje'] != null) 'HJE': 'Rp ${NumberFormat('#,###').format(cig!['hje'])}',
+            if (cig?['excise_rate'] != null) 'Tarif Cukai': 'Rp ${NumberFormat('#,###').format(cig!['excise_rate'])}/btg',
           },
         ));
       }

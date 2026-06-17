@@ -3,23 +3,43 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
+import '../core/constants.dart';
 import '../providers/auth_provider.dart';
 import '../services/production_service.dart';
 import '../utils/wib_helper.dart';
 
 class _ProductionEntry {
+  String? productId;
   String jenis = '';
   String merek = '';
   String hje = '';
   String bahanKemasan = '';
   String isi = '';
   String satuan = 'btg';
-  String jumlahKemasan = '';
+  String productName = '';
+  String productCode = '';
+  String variant = '';
+  String exciseRate = '';
+  String stock = '';
+  late final TextEditingController jumlahKemasanController;
+
+  _ProductionEntry({VoidCallback? onChanged}) {
+    jumlahKemasanController = TextEditingController();
+    if (onChanged != null) {
+      jumlahKemasanController.addListener(onChanged);
+    }
+  }
+
+  String get jumlahKemasan => jumlahKemasanController.text;
 
   int get jumlahIsi {
     final isiVal = int.tryParse(isi) ?? 0;
     final kemasanVal = int.tryParse(jumlahKemasan) ?? 0;
     return isiVal * kemasanVal;
+  }
+
+  void dispose() {
+    jumlahKemasanController.dispose();
   }
 }
 
@@ -34,18 +54,29 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   bool _isLoading = false;
   DateTime _docDate = WIB.now();
   late String _docNumber;
-  final List<_ProductionEntry> _entries = [_ProductionEntry()];
+  late final List<_ProductionEntry> _entries;
 
   // Product data from DB
   List<Map<String, dynamic>> _products = [];
-  List<Map<String, dynamic>> _brands = [];
 
   @override
   void initState() {
     super.initState();
     _docNumber = _generateDocNumber();
+    _entries = [
+      _ProductionEntry(onChanged: () {
+        if (mounted) setState(() {});
+      })
+    ];
     _loadProducts();
-    _loadBrands();
+  }
+
+  @override
+  void dispose() {
+    for (final entry in _entries) {
+      entry.dispose();
+    }
+    super.dispose();
   }
 
   String _generateDocNumber() {
@@ -64,32 +95,28 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     final factoryId = auth.profile?.factoryId;
     if (factoryId == null) return;
 
-    final res = await Supabase.instance.client
-        .from('products')
-        .select('id, hje, isi, satuan, bahan_kemasan, brands(name), product_types(category)')
-        .eq('factory_id', factoryId);
+    try {
+      final res = await Supabase.instance.client
+          .from(AppConstants.tableProducts)
+          .select('id, hje, sticks_per_pack, product_name, product_code, variant, satuan, bahan_kemasan, excise_rate, stock, brands(name, status), product_types(category)')
+          .eq('factory_id', factoryId);
 
-    if (mounted) {
-      setState(() {
-        _products = List<Map<String, dynamic>>.from(res);
-      });
-    }
-  }
-
-  Future<void> _loadBrands() async {
-    final auth = context.read<AuthProvider>();
-    final factoryId = auth.profile?.factoryId;
-    if (factoryId == null) return;
-
-    final res = await Supabase.instance.client
-        .from('brands')
-        .select('id, name, product_types(category)')
-        .eq('factory_id', factoryId);
-
-    if (mounted) {
-      setState(() {
-        _brands = List<Map<String, dynamic>>.from(res);
-      });
+      if (mounted) {
+        setState(() {
+          final allProducts = List<Map<String, dynamic>>.from(res);
+          // Filter to only display active brands
+          _products = allProducts.where((p) {
+            final brand = p['brands'] as Map<String, dynamic>?;
+            return brand != null && brand['status'] == 'active';
+          }).toList();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat produk: $e'), backgroundColor: AppTheme.error),
+        );
+      }
     }
   }
 
@@ -106,19 +133,25 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
   }
 
   void _addEntry() {
-    setState(() => _entries.add(_ProductionEntry()));
+    setState(() {
+      _entries.add(_ProductionEntry(onChanged: () {
+        if (mounted) setState(() {});
+      }));
+    });
   }
 
   void _removeEntry(int index) {
     if (_entries.length <= 1) return;
-    setState(() => _entries.removeAt(index));
+    final entry = _entries.removeAt(index);
+    entry.dispose();
+    setState(() {});
   }
 
   Future<void> _submitData() async {
     // Validate
     for (int i = 0; i < _entries.length; i++) {
       final e = _entries[i];
-      if (e.jenis.isEmpty || e.merek.isEmpty || e.hje.isEmpty || e.isi.isEmpty || e.jumlahKemasan.isEmpty) {
+      if (e.productId == null || e.jumlahKemasan.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lengkapi data pada baris ${i + 1}'), backgroundColor: AppTheme.error),
         );
@@ -136,85 +169,12 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
       final factoryId = auth.profile!.factoryId!;
       final userId = auth.profile!.id;
 
-      // Get or create a product_id for FK constraint
-      String? productId;
-      if (_products.isNotEmpty) {
-        productId = _products.first['id'] as String;
-      } else {
-        final productRes = await Supabase.instance.client
-            .from('products')
-            .select('id')
-            .eq('factory_id', factoryId)
-            .limit(1)
-            .maybeSingle();
-        if (productRes != null) {
-          productId = productRes['id'] as String;
-        } else {
-          // Auto-create a product based on the first entry's brand
-          // First ensure we have a brand
-          final firstEntry = _entries.first;
-          var brandRes = await Supabase.instance.client
-              .from('brands')
-              .select('id, product_type_id')
-              .eq('factory_id', factoryId)
-              .eq('name', firstEntry.merek)
-              .limit(1)
-              .maybeSingle();
-
-          if (brandRes == null) {
-            // Get or create product_type
-            var typeRes = await Supabase.instance.client
-                .from('product_types')
-                .select('id')
-                .eq('category', firstEntry.jenis)
-                .limit(1)
-                .maybeSingle();
-            if (typeRes == null) {
-              final newType = await Supabase.instance.client
-                  .from('product_types')
-                  .insert({'name': '${firstEntry.jenis} Kretek', 'category': firstEntry.jenis, 'isi_per_pak': int.tryParse(firstEntry.isi) ?? 12})
-                  .select()
-                  .single();
-              typeRes = newType;
-            }
-            // Create brand
-            final newBrand = await Supabase.instance.client
-                .from('brands')
-                .insert({'name': firstEntry.merek, 'product_type_id': typeRes!['id'], 'factory_id': factoryId})
-                .select()
-                .single();
-            brandRes = newBrand;
-          }
-
-          // Create product
-          final hje = double.tryParse(firstEntry.hje.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
-          final newProduct = await Supabase.instance.client
-              .from('products')
-              .insert({
-                'brand_id': brandRes['id'],
-                'product_type_id': brandRes['product_type_id'],
-                'hje': hje,
-                'isi': int.tryParse(firstEntry.isi) ?? 12,
-                'satuan': firstEntry.satuan,
-                'bahan_kemasan': firstEntry.bahanKemasan.isEmpty ? null : firstEntry.bahanKemasan,
-                'factory_id': factoryId,
-              })
-              .select()
-              .single();
-          productId = newProduct['id'] as String;
-
-          // Reload brands for future use
-          _loadBrands();
-          _loadProducts();
-        }
-      }
-
       final productionService = ProductionService();
       for (final entry in _entries) {
         await productionService.insert({
           'doc_number': _docNumber,
           'doc_date': WIB.toDateString(_docDate),
-          'product_id': productId,
+          'product_id': entry.productId,
           'factory_id': factoryId,
           'jenis': entry.jenis,
           'merek': entry.merek,
@@ -359,6 +319,50 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     );
   }
 
+  void _onProductChanged(_ProductionEntry entry, String? productId) {
+    if (productId == null) {
+      setState(() {
+        entry.productId = null;
+        entry.jenis = '';
+        entry.merek = '';
+        entry.hje = '';
+        entry.bahanKemasan = '';
+        entry.isi = '';
+        entry.satuan = 'btg';
+        entry.productName = '';
+        entry.productCode = '';
+        entry.variant = '';
+        entry.exciseRate = '';
+        entry.stock = '';
+      });
+      return;
+    }
+
+    final p = _products.firstWhere((prod) => prod['id'] == productId);
+    setState(() {
+      entry.productId = productId;
+      entry.merek = p['brands']?['name'] ?? '';
+      entry.jenis = p['product_types']?['category'] ?? '';
+      
+      final rawHje = p['hje'] ?? 0;
+      entry.hje = NumberFormat('#,###').format(rawHje);
+      
+      entry.bahanKemasan = p['bahan_kemasan'] ?? '';
+      entry.isi = (p['sticks_per_pack'] ?? 12).toString();
+      entry.satuan = p['satuan'] ?? 'btg';
+
+      entry.productName = p['product_name'] ?? '';
+      entry.productCode = p['product_code'] ?? '';
+      entry.variant = p['variant'] ?? '';
+
+      final rawExcise = p['excise_rate'] ?? 0;
+      entry.exciseRate = NumberFormat('#,###').format(rawExcise);
+
+      final rawStock = p['stock'] ?? 0;
+      entry.stock = NumberFormat('#,###').format(rawStock);
+    });
+  }
+
   Widget _buildFormCard(bool isDark, int index, _ProductionEntry entry) {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final cardBorder = isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.5);
@@ -401,25 +405,32 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [
-                  Expanded(child: _buildDropdownField(isDark: isDark, label: 'Jenis', value: entry.jenis.isEmpty ? null : entry.jenis, items: ['SKT', 'SKM', 'SPM'], onChanged: (v) => setState(() => entry.jenis = v ?? ''))),
-                  const SizedBox(width: 16),
-                  Expanded(flex: 2, child: _buildBrandDropdown(isDark: isDark, entry: entry)),
-                ]),
-                const SizedBox(height: 12),
-                _buildTextField(isDark: isDark, label: 'HJE (Rp)', hintText: '0', keyboardType: TextInputType.number, onChanged: (v) => entry.hje = v),
-                const SizedBox(height: 12),
-                _buildTextField(isDark: isDark, label: 'Bahan Kemasan', hintText: 'Kertas, Plastik, dll', onChanged: (v) => entry.bahanKemasan = v),
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(child: _buildTextField(isDark: isDark, label: 'Isi/Bks', hintText: '0', keyboardType: TextInputType.number, onChanged: (v) { entry.isi = v; setState(() {}); })),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildTextField(isDark: isDark, label: 'Satuan', hintText: 'btg', onChanged: (v) => entry.satuan = v.isEmpty ? 'btg' : v)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildTextField(isDark: isDark, label: 'Jml Kemasan', hintText: '0', keyboardType: TextInputType.number, onChanged: (v) { entry.jumlahKemasan = v; setState(() {}); })),
-                ]),
+                _buildProductSkuDropdown(isDark: isDark, entry: entry),
                 const SizedBox(height: 16),
-                _buildComputedField(isDark: isDark, label: 'Jumlah Isi (Isi × Jml Kemasan)', value: NumberFormat('#,###').format(entry.jumlahIsi)),
+                if (entry.productId != null) ...[
+                  _buildProductDetailsGrid(isDark: isDark, entry: entry),
+                  const SizedBox(height: 16),
+                  _buildEditableQuantityField(isDark: isDark, entry: entry),
+                  const SizedBox(height: 16),
+                  _buildComputedField(isDark: isDark, label: 'Jumlah Isi (Isi × Jml Kemasan)', value: NumberFormat('#,###').format(entry.jumlahIsi)),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withValues(alpha: 0.02) : AppTheme.surfaceContainerLow.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isDark ? Colors.white12 : AppTheme.outlineVariant.withValues(alpha: 0.5)),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.inventory_2_outlined, color: isDark ? Colors.white30 : AppTheme.outline, size: 32),
+                        const SizedBox(height: 8),
+                        Text('Silakan pilih produk terlebih dahulu', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline, fontSize: 13, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                ]
               ],
             ),
           ),
@@ -428,100 +439,127 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     );
   }
 
-  Widget _buildTextField({
-    required bool isDark,
-    required String label,
-    String? hintText,
-    TextInputType? keyboardType,
-    required ValueChanged<String> onChanged,
-  }) {
+  Widget _buildProductSkuDropdown({required bool isDark, required _ProductionEntry entry}) {
     final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
     final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text('Pilih Produk (SKU)', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          value: entry.productId,
+          hint: Text('Pilih Produk', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline)),
+          isExpanded: true,
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          items: _products.map((p) {
+            final brandName = p['brands']?['name'] ?? 'Produk';
+            final productName = p['product_name'] ?? '';
+            return DropdownMenuItem(
+              value: p['id'] as String,
+              child: Text('$productName ($brandName)'),
+            );
+          }).toList(),
+          onChanged: (v) => _onProductChanged(entry, v),
+          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: isDark ? Colors.white38 : AppTheme.outline),
+          decoration: InputDecoration(
+            filled: true, fillColor: fillColor,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductDetailsGrid({required bool isDark, required _ProductionEntry entry}) {
+    final detailBg = isDark ? const Color(0xFF334155).withValues(alpha: 0.3) : AppTheme.surfaceContainerLow.withValues(alpha: 0.4);
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.05) : AppTheme.outlineVariant.withValues(alpha: 0.3);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: detailBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Nama Produk', value: entry.productName.isEmpty ? '-' : entry.productName)),
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Kode Produk', value: entry.productCode.isEmpty ? '-' : entry.productCode)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Merek', value: entry.merek)),
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Varian', value: entry.variant.isEmpty ? '-' : entry.variant)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Jenis', value: entry.jenis)),
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Isi / Kemasan', value: '${entry.isi} ${entry.satuan}')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'HJE', value: 'Rp ${entry.hje}')),
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Tarif Cukai / btg', value: 'Rp ${entry.exciseRate}')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Stok Tersedia', value: '${entry.stock} pak')),
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Bahan Kemasan', value: entry.bahanKemasan.isEmpty ? '-' : entry.bahanKemasan)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItem({required bool isDark, required String label, required String value}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.2)),
+        const SizedBox(height: 3),
+        Text(value, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  Widget _buildEditableQuantityField({required bool isDark, required _ProductionEntry entry}) {
+    final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Jml Kemasan', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextFormField(
-          keyboardType: keyboardType,
-          onChanged: onChanged,
+          controller: entry.jumlahKemasanController,
+          keyboardType: TextInputType.number,
           style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
-            hintText: hintText,
+            hintText: 'Masukkan jml kemasan',
             hintStyle: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline),
             filled: true, fillColor: fillColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDropdownField({
-    required bool isDark,
-    required String label,
-    String? value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          value: value,
-          hint: Text('Pilih', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline)),
-          isExpanded: true,
-          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-          onChanged: onChanged,
-          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-          icon: Icon(Icons.keyboard_arrow_down, color: isDark ? Colors.white38 : AppTheme.outline),
-          decoration: InputDecoration(
-            filled: true, fillColor: fillColor,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBrandDropdown({required bool isDark, required _ProductionEntry entry}) {
-    final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
-    final brandNames = _brands.map((b) => b['name'] as String).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Merek', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          value: entry.merek.isEmpty ? null : (brandNames.contains(entry.merek) ? entry.merek : null),
-          hint: Text('Pilih Merek', style: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline)),
-          isExpanded: true,
-          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          items: brandNames.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
-          onChanged: (v) => setState(() => entry.merek = v ?? ''),
-          style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
-          icon: Icon(Icons.keyboard_arrow_down, color: isDark ? Colors.white38 : AppTheme.outline),
-          decoration: InputDecoration(
-            filled: true, fillColor: fillColor,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderColor)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         ),
       ],
