@@ -13,7 +13,6 @@ import { useRoleAccess } from '../hooks/useRoleAccess';
 const GOLONGAN_OPTIONS = ['SKT-I', 'SKT-II', 'SKT-IIIA', 'SKT-IIIB', 'SKM-I', 'SKM-II', 'SPM-I', 'SPM-II'];
 
 const emptyForm = {
-  code: '',
   name: '',
   golongan: 'SKT-I',
   address: '',
@@ -66,7 +65,7 @@ const DataPabrik = () => {
 
   const loadFactories = async () => {
     setLoading(true);
-    const { data, error } = await scopeQuery(supabase.from('factories').select('*').order('code'), 'id');
+    const { data, error } = await scopeQuery(supabase.from('factories').select('*').order('name'), 'id');
     if (error) {
       toast.error('Gagal memuat data: ' + error.message);
     } else if (data) {
@@ -94,7 +93,6 @@ const DataPabrik = () => {
   const openEdit = (f) => {
     setEditing(f);
     setForm({
-      code: f.code || '',
       name: f.name || '',
       golongan: f.golongan || 'SKT-I',
       address: f.address || '',
@@ -155,7 +153,7 @@ const DataPabrik = () => {
       const [brandsRes, allocationsRes] = await Promise.all([
         supabase
           .from('brands')
-          .select('*, product_types(name)')
+          .select('*, cigarettes(*, cukai_categories(*))')
           .eq('factory_id', factory.id)
           .order('name'),
         supabase
@@ -176,8 +174,8 @@ const DataPabrik = () => {
 
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
-    if (!form.code.trim() || !form.name.trim()) {
-      toast.warning('Kode dan nama pabrik wajib diisi');
+    if (!form.name.trim()) {
+      toast.warning('Nama pabrik wajib diisi');
       return;
     }
     setSaving(true);
@@ -228,7 +226,6 @@ const DataPabrik = () => {
       }
 
       const payload = {
-        code: form.code.trim(),
         name: form.name.trim(),
         golongan: form.golongan,
         address: form.address.trim() || null,
@@ -293,7 +290,6 @@ const DataPabrik = () => {
     const q = search.trim().toLowerCase();
     const matchSearch = !q 
       || f.name?.toLowerCase().includes(q) 
-      || f.code?.toLowerCase().includes(q) 
       || f.address?.toLowerCase().includes(q)
       || f.nppbkc?.toLowerCase().includes(q);
     return matchFilter && matchSearch;
@@ -318,7 +314,7 @@ const DataPabrik = () => {
           )}
           <div className="text-center sm:text-left flex-1 min-w-0">
             <h3 className="text-lg font-bold text-gray-955 dark:text-white leading-tight">{factory.name}</h3>
-            <p className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-1 shrink-0">KODE: {factory.code}</p>
+            <p className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-1 shrink-0">NPPBKC: {factory.nppbkc || '-'}</p>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
                 Golongan: {factory.golongan}
@@ -429,6 +425,8 @@ const DataPabrik = () => {
                           <th className="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">No</th>
                           <th className="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nama Merek</th>
                           <th className="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kategori / Jenis Produk</th>
+                          <th className="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Stok Belum Dilekati</th>
+                          <th className="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Stok Siap Jual</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
@@ -436,7 +434,9 @@ const DataPabrik = () => {
                           <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
                             <td className="px-4 py-2.5 text-gray-400">{idx + 1}</td>
                             <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white">{b.name}</td>
-                            <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{b.product_types?.name || '-'}</td>
+                            <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">{b.cigarettes?.[0]?.cukai_categories?.name || '-'}</td>
+                            <td className="px-4 py-2.5 text-right font-medium text-blue-600 dark:text-blue-400 font-mono">{(b.cigarettes?.[0]?.unaffixed_stock || 0).toLocaleString('id-ID')} bks</td>
+                            <td className="px-4 py-2.5 text-right font-bold text-gray-950 dark:text-white font-mono">{(b.cigarettes?.[0]?.stock || 0).toLocaleString('id-ID')} bks</td>
                           </tr>
                         ))}
                       </tbody>
@@ -557,15 +557,9 @@ const DataPabrik = () => {
             </div>
 
             {/* Read-only / Admin managed details */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-1.5 block">Kode Pabrik (Terkunci)</label>
-                <input value={form.code} disabled className="w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-1.5 block">Nama Pabrik (Terkunci)</label>
-                <input value={form.name} disabled className="w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-1.5 block">Nama Pabrik (Terkunci)</label>
+              <input value={form.name} disabled className="w-full px-3 py-2 border border-gray-200 dark:border-gray-800 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
             </div>
 
             {/* Legalitas Section */}
@@ -674,7 +668,7 @@ const DataPabrik = () => {
               </button>
             ))}
           </div>
-          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari pabrik (nama, kode, nppbkc)..." className="md:w-96" />
+          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari pabrik (nama, nppbkc)..." className="md:w-96" />
         </div>
 
         <div className="overflow-x-auto">
@@ -682,7 +676,6 @@ const DataPabrik = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Logo & Nama</th>
-                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Kode</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Golongan</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">NPPBKC</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Status</th>
@@ -691,7 +684,7 @@ const DataPabrik = () => {
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredFactories.length === 0 ? (
-                <tr><td colSpan="6" className="px-5 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{search || filter !== 'all' ? 'Tidak ada data sesuai filter' : 'Belum ada data pabrik'}</td></tr>
+                <tr><td colSpan="5" className="px-5 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{search || filter !== 'all' ? 'Tidak ada data sesuai filter' : 'Belum ada data pabrik'}</td></tr>
               ) : (
                 filteredFactories.map((factory) => (
                   <tr key={factory.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
@@ -707,7 +700,6 @@ const DataPabrik = () => {
                         <span className="font-semibold text-gray-900 dark:text-white">{factory.name}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">{factory.code}</td>
                     <td className="px-5 py-3">
                       <span className="text-xs font-semibold px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400">{factory.golongan}</span>
                     </td>
@@ -812,28 +804,15 @@ const DataPabrik = () => {
           {/* Data Perusahaan */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-2">Data Perusahaan</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kode Pabrik <span className="text-red-500">*</span></label>
-                <input
-                  value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
-                  disabled={!!editing}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                  placeholder="FCT-012"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Nama Pabrik <span className="text-red-500">*</span></label>
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400"
-                  placeholder="PT Nama Pabrik"
-                  required
-                />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Nama Pabrik <span className="text-red-500">*</span></label>
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400"
+                placeholder="PT Nama Pabrik"
+                required
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

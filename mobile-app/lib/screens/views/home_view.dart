@@ -19,24 +19,26 @@ class HomeView extends StatefulWidget {
   const HomeView({super.key, this.onNavigateToHistory});
 
   @override
-  State<HomeView> createState() => _HomeViewState();
+  State<HomeView> createState() => HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView> {
+class HomeViewState extends State<HomeView> {
   // Dashboard stats
   int _totalProduksi = 0;
   int _sisaCukai = 0;
+  int _cukaiTerpakai = 0;
   num _totalPendapatan = 0;
-  num _totalPengeluaranCukai = 0;
+  int _totalStockPacks = 0;
   int _totalKeluar = 0;
   List<Map<String, dynamic>> _todayActivities = [];
   bool _isLoading = true;
   Map<String, dynamic>? _factoryData;
+  List<Map<String, dynamic>> _allocationsRaw = [];
 
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
+    loadDashboardData();
     _initNotifications();
   }
 
@@ -48,7 +50,7 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  Future<void> _loadDashboardData() async {
+  Future<void> loadDashboardData() async {
     final auth = context.read<AuthProvider>();
     final factoryId = auth.profile?.factoryId;
     if (factoryId == null) {
@@ -76,11 +78,13 @@ class _HomeViewState extends State<HomeView> {
       // Sisa cukai
       final cukaiRes = await client
           .from('cukai_allocations')
-          .select('quota, used, damaged')
+          .select('*, cigarettes(*, brands(*))')
           .eq('factory_id', factoryId);
       int sisaCukai = 0;
+      int usedCukai = 0;
       for (final r in cukaiRes) {
         sisaCukai += ((r['quota'] as int) - (r['used'] as int) - ((r['damaged'] as int?) ?? 0));
+        usedCukai += (r['used'] as int);
       }
 
       // Total pendapatan (outgoing_goods total_value bulan ini)
@@ -88,6 +92,7 @@ class _HomeViewState extends State<HomeView> {
           .from('outgoing_goods')
           .select('total_value, volume')
           .eq('factory_id', factoryId)
+          .eq('status', 'approved')
           .gte('transaction_date', startOfMonth);
       num totalPendapatan = 0;
       int totalKeluar = 0;
@@ -96,18 +101,14 @@ class _HomeViewState extends State<HomeView> {
         totalKeluar += (r['volume'] as int?) ?? 0;
       }
 
-      // Total pengeluaran cukai (tarif_cukai * jumlah_lembar from cukai_requests APPROVED only)
-      final cukaiReqRes = await client
-          .from('cukai_requests')
-          .select('tarif_cukai, jumlah_lembar')
-          .eq('factory_id', factoryId)
-          .eq('status', 'approved')
-          .gte('request_date', startOfMonth);
-      num totalPengeluaranCukai = 0;
-      for (final r in cukaiReqRes) {
-        final tarif = (r['tarif_cukai'] as num?) ?? 0;
-        final lembar = (r['jumlah_lembar'] as int?) ?? 0;
-        totalPengeluaranCukai += tarif * lembar;
+      // Total stok kemasan
+      final cigarettesRes = await client
+          .from('cigarettes')
+          .select('stock')
+          .eq('factory_id', factoryId);
+      int totalStokPacks = 0;
+      for (final r in cigarettesRes) {
+        totalStokPacks += (r['stock'] as int?) ?? 0;
       }
 
       // Today's activities
@@ -175,6 +176,7 @@ class _HomeViewState extends State<HomeView> {
           .from('outgoing_goods')
           .select()
           .eq('factory_id', factoryId)
+          .eq('status', 'approved')
           .gte('created_at', '${today}T00:00:00')
           .order('created_at', ascending: false);
       for (final o in todayOut) {
@@ -243,11 +245,13 @@ class _HomeViewState extends State<HomeView> {
         setState(() {
           _totalProduksi = totalProd;
           _sisaCukai = sisaCukai;
+          _cukaiTerpakai = usedCukai;
           _totalPendapatan = totalPendapatan;
-          _totalPengeluaranCukai = totalPengeluaranCukai;
+          _totalStockPacks = totalStokPacks;
           _totalKeluar = totalKeluar;
           _todayActivities = todayActivities;
           _factoryData = factoryRes;
+          _allocationsRaw = List<Map<String, dynamic>>.from(cukaiRes);
           _isLoading = false;
         });
       }
@@ -271,7 +275,7 @@ class _HomeViewState extends State<HomeView> {
       backgroundColor: backgroundColor,
       appBar: _buildAppBar(context, isDark),
       body: RefreshIndicator(
-        onRefresh: () async => _loadDashboardData(),
+        onRefresh: () async => loadDashboardData(),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 100),
@@ -280,8 +284,9 @@ class _HomeViewState extends State<HomeView> {
               _HeroCarousel(
                 isDark: isDark,
                 totalPendapatan: _formatCurrency(_totalPendapatan),
-                totalPengeluaran: _formatCurrency(_totalPengeluaranCukai),
-                saldoKas: _formatCurrency(_totalPendapatan - _totalPengeluaranCukai),
+                totalStok: '${NumberFormat('#,###').format(_totalStockPacks)} kemasan',
+                totalCukai: '${NumberFormat('#,###').format(_sisaCukai)} lembar',
+                allocations: _allocationsRaw,
               ),
               const SizedBox(height: 18),
               _buildStatsGrid(isDark),
@@ -409,9 +414,9 @@ class _HomeViewState extends State<HomeView> {
 
   Widget _buildStatsGrid(bool isDark) {
     return Row(children: [
-      Expanded(child: _buildStatCard(isDark: isDark, title: 'Produksi', value: NumberFormat('#,###').format(_totalProduksi), icon: Icons.inventory_2_outlined, color: const Color(0xFF4F46E5))),
+      Expanded(child: _buildStatCard(isDark: isDark, title: 'Stok (Kemasan)', value: NumberFormat('#,###').format(_totalStockPacks), icon: Icons.inventory_2_outlined, color: const Color(0xFF4F46E5))),
       const SizedBox(width: 14),
-      Expanded(child: _buildStatCard(isDark: isDark, title: 'Sisa Cukai', value: NumberFormat('#,###').format(_sisaCukai), icon: Icons.confirmation_number_outlined, color: const Color(0xFFF59E0B))),
+      Expanded(child: _buildStatCard(isDark: isDark, title: 'Cukai Terpakai', value: '${NumberFormat('#,###').format(_cukaiTerpakai)} lbr', icon: Icons.check_circle_outline_rounded, color: const Color(0xFF10B981))),
     ]);
   }
 
@@ -501,7 +506,7 @@ class _HomeViewState extends State<HomeView> {
     );
     if (picked != null) {
       // Reload data for selected month - for now just refresh
-      _loadDashboardData();
+      loadDashboardData();
     }
   }
 
@@ -547,7 +552,7 @@ class _HomeViewState extends State<HomeView> {
       productions: List<Map<String, dynamic>>.from(productions),
       factoryName: factoryRes['name'] ?? '-',
       factoryAddress: factoryRes['address'] ?? '-',
-      nppbkc: factoryRes['code'] ?? '-',
+      nppbkc: factoryRes['nppbkc'] ?? '-',
       ownerName: auth.profile?.fullName ?? '-',
       periodStart: startOfMonth,
       periodEnd: endOfMonth,
@@ -644,9 +649,10 @@ class _HomeViewState extends State<HomeView> {
 class _HeroCarousel extends StatefulWidget {
   final bool isDark;
   final String totalPendapatan;
-  final String totalPengeluaran;
-  final String saldoKas;
-  const _HeroCarousel({required this.isDark, required this.totalPendapatan, required this.totalPengeluaran, required this.saldoKas});
+  final String totalStok;
+  final String totalCukai;
+  final List<Map<String, dynamic>> allocations;
+  const _HeroCarousel({required this.isDark, required this.totalPendapatan, required this.totalStok, required this.totalCukai, required this.allocations});
 
   @override
   State<_HeroCarousel> createState() => _HeroCarouselState();
@@ -671,6 +677,10 @@ class _HeroCarouselState extends State<_HeroCarousel> {
 
   @override
   Widget build(BuildContext context) {
+    final brandAllocations = widget.allocations
+        .where((a) => a['product_id'] != null)
+        .toList();
+
     return Column(children: [
       SizedBox(
         height: 190,
@@ -678,9 +688,76 @@ class _HeroCarouselState extends State<_HeroCarousel> {
           controller: _pageController,
           onPageChanged: (p) => setState(() => _currentPage = p),
           children: [
-            _buildSlide(title: 'Total Pendapatan', value: widget.totalPendapatan, icon: Icons.account_balance_wallet_rounded, bgIcon: Icons.payments_rounded, gradientStart: widget.isDark ? const Color(0xFF312E81) : const Color(0xFF4F46E5), gradientEnd: widget.isDark ? const Color(0xFF4338CA) : const Color(0xFF6366F1)),
-            _buildSlide(title: 'Total Pengeluaran Cukai', value: widget.totalPengeluaran, icon: Icons.trending_down_rounded, bgIcon: Icons.money_off_rounded, gradientStart: widget.isDark ? const Color(0xFF7F1D1D) : const Color(0xFFDC2626), gradientEnd: widget.isDark ? const Color(0xFF991B1B) : const Color(0xFFEF4444)),
-            _buildSlide(title: 'Saldo Kas', value: widget.saldoKas, icon: Icons.savings_rounded, bgIcon: Icons.account_balance_rounded, gradientStart: widget.isDark ? const Color(0xFF064E3B) : const Color(0xFF059669), gradientEnd: widget.isDark ? const Color(0xFF065F46) : const Color(0xFF10B981)),
+            _buildSlide(
+              title: 'Total Pendapatan',
+              value: widget.totalPendapatan,
+              icon: Icons.account_balance_wallet_rounded,
+              bgIcon: Icons.payments_rounded,
+              gradientStart: widget.isDark ? const Color(0xFF312E81) : const Color(0xFF4F46E5),
+              gradientEnd: widget.isDark ? const Color(0xFF4338CA) : const Color(0xFF6366F1),
+            ),
+            _buildSlide(
+              title: 'Stok Keseluruhan',
+              value: widget.totalStok,
+              icon: Icons.inventory_2_rounded,
+              bgIcon: Icons.warehouse_rounded,
+              gradientStart: widget.isDark ? const Color(0xFF064E3B) : const Color(0xFF059669),
+              gradientEnd: widget.isDark ? const Color(0xFF065F46) : const Color(0xFF10B981),
+            ),
+            _buildSlide(
+              title: 'Stok Cukai Keseluruhan',
+              value: widget.totalCukai,
+              icon: Icons.confirmation_number_rounded,
+              bgIcon: Icons.confirmation_number_outlined,
+              gradientStart: widget.isDark ? const Color(0xFF78350F) : const Color(0xFFD97706),
+              gradientEnd: widget.isDark ? const Color(0xFF92400E) : const Color(0xFFF59E0B),
+              extraContent: brandAllocations.isEmpty
+                  ? null
+                  : SizedBox(
+                      height: 50,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: brandAllocations.length,
+                        physics: const BouncingScrollPhysics(),
+                        itemBuilder: (context, idx) {
+                          final a = brandAllocations[idx];
+                          final quota = (a['quota'] as num).toInt();
+                          final used = (a['used'] as num).toInt();
+                          final damaged = ((a['damaged'] as num?)?.toInt() ?? 0);
+                          final remaining = quota - used - damaged;
+                          final cig = a['cigarettes'] as Map<String, dynamic>?;
+                          final brandName = cig?['brands']?['name'] ?? 'Merek';
+                          
+                          return Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  brandName,
+                                  style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${NumberFormat('#,###').format(remaining)} lbr',
+                                  style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+            ),
           ],
         ),
       ),
@@ -692,7 +769,15 @@ class _HeroCarouselState extends State<_HeroCarousel> {
     ]);
   }
 
-  Widget _buildSlide({required String title, required String value, required IconData icon, required IconData bgIcon, required Color gradientStart, required Color gradientEnd}) {
+  Widget _buildSlide({
+    required String title,
+    required String value,
+    required IconData icon,
+    required IconData bgIcon,
+    required Color gradientStart,
+    required Color gradientEnd,
+    Widget? extraContent,
+  }) {
     return Container(
       width: double.infinity, margin: const EdgeInsets.symmetric(horizontal: 2), padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(26), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [gradientStart, gradientEnd])),
@@ -702,16 +787,21 @@ class _HeroCarouselState extends State<_HeroCarousel> {
           Text(title, style: TextStyle(color: Colors.white.withValues(alpha: 0.82), fontSize: 13)),
           const SizedBox(height: 8),
           Text(value, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.8)),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.access_time_rounded, color: Colors.white.withValues(alpha: 0.82), size: 15),
-              const SizedBox(width: 7),
-              Text('Periode ${DateFormat('MMM yyyy').format(DateTime.now())}', style: TextStyle(color: Colors.white.withValues(alpha: 0.82), fontSize: 11.5, fontWeight: FontWeight.w500)),
-            ]),
-          ),
+          if (extraContent != null) ...[
+            const SizedBox(height: 12),
+            extraContent,
+          ] else ...[
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.access_time_rounded, color: Colors.white.withValues(alpha: 0.82), size: 15),
+                const SizedBox(width: 7),
+                Text('Periode ${DateFormat('MMM yyyy').format(DateTime.now())}', style: TextStyle(color: Colors.white.withValues(alpha: 0.82), fontSize: 11.5, fontWeight: FontWeight.w500)),
+              ]),
+            ),
+          ],
         ]),
       ]),
     );

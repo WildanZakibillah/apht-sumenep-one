@@ -12,9 +12,9 @@ import SearchBar from '../components/shared/SearchBar';
 
 const STOCK_STATUSES = [
   { id: 'all', label: 'Semua Status', icon: 'splitscreen', color: 'slate' },
-  { id: 'safe', label: 'Stok Aman (>100 pak)', icon: 'check_circle', color: 'emerald' },
-  { id: 'low', label: 'Stok Menipis (1-100 pak)', icon: 'warning', color: 'amber' },
-  { id: 'empty', label: 'Stok Habis (0 pak)', icon: 'error_outline', color: 'rose' }
+  { id: 'safe', label: 'Stok Aman (>100 kemasan)', icon: 'check_circle', color: 'emerald' },
+  { id: 'low', label: 'Stok Menipis (1-100 kemasan)', icon: 'warning', color: 'amber' },
+  { id: 'empty', label: 'Stok Habis (0 kemasan)', icon: 'error_outline', color: 'rose' }
 ];
 
 const ADJUST_REASONS = [
@@ -257,7 +257,7 @@ const DataStok = () => {
 
       if (error) throw error;
 
-      toast.success(`Stok berhasil disesuaikan menjadi ${newStock} pak`);
+      toast.success(`Stok berhasil disesuaikan menjadi ${newStock} kemasan`);
       closeAdjustModal();
       await loadData();
     } catch (err) {
@@ -288,7 +288,7 @@ const DataStok = () => {
 
       {/* Statistics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="inventory_2" label="Total Stok (Pak)" value={stats.totalStockPacks.toLocaleString('id-ID')} color="blue" />
+        <StatCard icon="inventory_2" label="Total Stok (Kemasan)" value={stats.totalStockPacks.toLocaleString('id-ID')} color="blue" />
         <StatCard icon="splitscreen" label="Total Stok (Batang)" value={stats.totalStockSticks.toLocaleString('id-ID')} color="green" />
         <StatCard icon="warning_amber" label="Stok Menipis" value={stats.lowStockCount} suffix="produk" color="amber" />
         <StatCard icon="error_outline" label="Stok Habis" value={stats.emptyStockCount} suffix="produk" color="red" />
@@ -368,8 +368,8 @@ const DataStok = () => {
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider pl-6">Produk & SKU</th>
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Merek & Pabrik</th>
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Jenis</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Stok (Pak)</th>
-                <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Stok (Batang)</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Stok Belum Dilekati</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-right">Stok Siap Jual</th>
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Harga & Cukai</th>
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center">Status</th>
                 <th className="px-5 py-3.5 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider text-center pr-6">Aksi</th>
@@ -421,19 +421,39 @@ const DataStok = () => {
                         </span>
                       </td>
 
-                      {/* Stock in Packs */}
+                      {/* Stock Belum Dilekati */}
                       <td className="px-5 py-4 text-right">
-                        <div className={`text-sm font-bold ${isEmpty ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-gray-900 dark:text-white'}`}>
-                          {stock.toLocaleString('id-ID')}
+                        <div className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                          {(c.unaffixed_stock || 0).toLocaleString('id-ID')} kemasan
                         </div>
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{c.sticks_per_pack || 12} btg/pak</div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{((c.unaffixed_stock || 0) * (c.sticks_per_pack || 12)).toLocaleString('id-ID')} btg</div>
                       </td>
 
-                      {/* Stock in Sticks */}
+                      {/* Stock Siap Jual */}
                       <td className="px-5 py-4 text-right">
-                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-                          {sticks.toLocaleString('id-ID')} btg
+                        <div className={`text-sm font-bold ${isEmpty ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-gray-900 dark:text-white'}`}>
+                          {stock.toLocaleString('id-ID')} kemasan
                         </div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{sticks.toLocaleString('id-ID')} btg</div>
+                        {stock > 0 && (
+                          <div className="text-[10px] text-indigo-650 dark:text-indigo-400 font-semibold mt-1">
+                            {(() => {
+                              const packsPerSlop = c.packs_per_slop || 10;
+                              const slopsPerCarton = c.slops_per_carton || 20;
+                              
+                              const cartons = Math.floor(stock / (packsPerSlop * slopsPerCarton));
+                              let rem = stock % (packsPerSlop * slopsPerCarton);
+                              const slops = Math.floor(rem / packsPerSlop);
+                              const packs = rem % packsPerSlop;
+
+                              const parts = [];
+                              if (cartons > 0) parts.push(`${cartons} krt`);
+                              if (slops > 0) parts.push(`${slops} slp`);
+                              if (packs > 0) parts.push(`${packs} bks`);
+                              return parts.join(' + ') || '0 bks';
+                            })()}
+                          </div>
+                        )}
                       </td>
 
                       {/* Price & Excise */}
@@ -509,7 +529,7 @@ const DataStok = () => {
             <div className="p-3 bg-gray-50 dark:bg-gray-800/40 rounded-lg border border-gray-100 dark:border-gray-800">
               <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Produk Terpilih</div>
               <div className="font-bold text-gray-900 dark:text-white mt-1 text-sm">{adjustingProduct.product_name}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Merek: {adjustingProduct.brands?.name} | Stok Saat Ini: <span className="font-bold text-indigo-600 dark:text-indigo-400">{adjustingProduct.stock || 0} pak</span></div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Merek: {adjustingProduct.brands?.name} | Stok Saat Ini: <span className="font-bold text-indigo-600 dark:text-indigo-400">{adjustingProduct.stock || 0} kemasan</span></div>
             </div>
 
             {/* Type Selector */}
@@ -546,7 +566,7 @@ const DataStok = () => {
 
             {/* Quantity Input */}
             <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Jumlah Penyesuaian (Pak) <span className="text-red-500">*</span></label>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Jumlah Penyesuaian (Kemasan) <span className="text-red-500">*</span></label>
               <input
                 type="number"
                 min="1"
@@ -554,7 +574,7 @@ const DataStok = () => {
                 value={adjustForm.qty}
                 onChange={(e) => setAdjustForm({ ...adjustForm, qty: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                placeholder="Masukkan jumlah dalam bungkus/pak..."
+                placeholder="Masukkan jumlah dalam kemasan..."
               />
             </div>
 
@@ -604,7 +624,7 @@ const DataStok = () => {
               </div>
               <div className="text-right">
                 <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{(historyProduct.stock || 0).toLocaleString()}</div>
-                <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Stok Saat Ini (Pak)</div>
+                 <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Stok Saat Ini (Kemasan)</div>
               </div>
             </div>
 
@@ -648,7 +668,7 @@ const DataStok = () => {
                           </td>
                           <td className="px-5 py-3 text-xs text-gray-850 dark:text-gray-200 font-semibold">{log.reference || '-'}</td>
                           <td className={`px-5 py-3 text-right pr-6 text-sm font-bold ${log.isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
-                            {log.isPositive ? '+' : '-'}{log.qty.toLocaleString('id-ID')} pak
+                            {log.isPositive ? '+' : '-'}{log.qty.toLocaleString('id-ID')} kemasan
                           </td>
                         </tr>
                       ))

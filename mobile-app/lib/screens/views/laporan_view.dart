@@ -289,7 +289,7 @@ class _LaporanViewState extends State<LaporanView> {
       productions: List<Map<String, dynamic>>.from(productions),
       factoryName: factoryRes['name'] ?? '-',
       factoryAddress: factoryRes['address'] ?? '-',
-      nppbkc: factoryRes['code'] ?? '-',
+      nppbkc: factoryRes['nppbkc'] ?? '-',
       ownerName: auth.profile?.fullName ?? '-',
       periodStart: _selectedMonth,
       periodEnd: endMonth,
@@ -400,24 +400,32 @@ class _LaporanViewState extends State<LaporanView> {
             children: [
               Icon(icon, color: color, size: 16),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  color: isDark ? Colors.white70 : color.withValues(alpha: 0.8),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : color.withValues(alpha: 0.8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: isDark ? Colors.white : color,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isDark ? Colors.white : color,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -495,7 +503,7 @@ class _LaporanViewState extends State<LaporanView> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$brandName • ${c['cigarette_type'] ?? '-'}$variantText • $sticksPerPack btg/pak',
+                  '$brandName • ${c['cigarette_type'] ?? '-'}$variantText • $sticksPerPack btg/kemasan',
                   style: TextStyle(
                     color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant,
                     fontSize: 12,
@@ -517,7 +525,7 @@ class _LaporanViewState extends State<LaporanView> {
                 ),
               ),
               Text(
-                'pak',
+                'kemasan',
                 style: TextStyle(
                   color: isDark ? Colors.white38 : AppTheme.outline,
                   fontSize: 10,
@@ -545,7 +553,7 @@ class _LaporanViewState extends State<LaporanView> {
         children: [
           Expanded(
             child: _buildSmallHeroCard(
-              title: 'TOTAL STOK (PAK)',
+              title: 'TOTAL STOK (KEMASAN)',
               value: NumberFormat('#,###').format(_totalStockPacks),
               color: AppTheme.primary,
               bgColor: AppTheme.primary.withValues(alpha: 0.08),
@@ -793,15 +801,26 @@ class _LaporanViewState extends State<LaporanView> {
               ),
             ]),
             const SizedBox(height: 8),
-            Row(children: [
-              Text('${o['transaction_date']}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
-              const SizedBox(width: 16),
-              Text('${NumberFormat('#,###').format(o['volume'])} btg', style: TextStyle(color: AppTheme.primary, fontSize: 14, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text('Rp ${NumberFormat('#,###').format(totalValue)}', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 18),
-            ]),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${o['transaction_date']}', style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Text('${NumberFormat('#,###').format(o['volume'])} btg', style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text('Rp ${NumberFormat('#,###').format(totalValue)}', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 6),
+                    Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : AppTheme.outlineVariant, size: 18),
+                  ],
+                ),
+              ],
+            ),
           ]),
         ),
       ),

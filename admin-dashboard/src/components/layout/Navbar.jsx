@@ -1,43 +1,119 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { useNotifications } from '../../hooks/useNotifications';
 import { useTheme } from '../../context/ThemeContext';
 import { getNavSections } from './Sidebar';
 import { useRoleAccess } from '../../hooks/useRoleAccess';
 import ConfirmDialog from '../shared/ConfirmDialog';
-
-const formatTime = (dateStr) => {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Baru saja';
-  if (mins < 60) return `${mins}m lalu`;
-  const hrs = Math.floor(diff / 3600000);
-  if (hrs < 24) return `${hrs}j lalu`;
-  const days = Math.floor(diff / 86400000);
-  if (days < 7) return `${days}h lalu`;
-  return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-};
-
-const getTypeStyle = (type) => {
-  switch (type) {
-    case 'success': return { icon: 'check_circle', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' };
-    case 'error': return { icon: 'error', color: 'text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20' };
-    case 'warning': return { icon: 'warning', color: 'text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20' };
-    default: return { icon: 'info', color: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' };
-  }
-};
+import { supabase } from '../../lib/supabase';
 
 const Navbar = () => {
-  const { profile, signOut } = useAuth();
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { profile, signOut, ready } = useAuth();
   const { isDark, toggleTheme } = useTheme();
-  const { roleLabel, isDirektur } = useRoleAccess();
+  const { roleLabel, isDirektur, isFactoryScoped, factoryId } = useRoleAccess();
   const location = useLocation();
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
-  const [showNotif, setShowNotif] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [pendingCukaiCount, setPendingCukaiCount] = useState(0);
+  const [pendingOutgoingCount, setPendingOutgoingCount] = useState(0);
+  const [seenCounts, setSeenCounts] = useState({ cukai: 0, outgoing: 0 });
+
+  const fetchPendingCounts = useCallback(async () => {
+    if (!ready) return;
+    try {
+      let cukaiQuery = supabase.from('cukai_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+      if (isFactoryScoped && factoryId) {
+        cukaiQuery = cukaiQuery.eq('factory_id', factoryId);
+      }
+      const { count: cCount, error: cErr } = await cukaiQuery;
+      if (!cErr) setPendingCukaiCount(cCount || 0);
+
+      let outgoingQuery = supabase.from('outgoing_goods').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+      if (isFactoryScoped && factoryId) {
+        outgoingQuery = outgoingQuery.eq('factory_id', factoryId);
+      }
+      const { count: oCount, error: oErr } = await outgoingQuery;
+      if (!oErr) setPendingOutgoingCount(oCount || 0);
+    } catch (err) {
+      console.error("Error fetching pending counts in Navbar:", err);
+    }
+  }, [ready, isFactoryScoped, factoryId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    fetchPendingCounts();
+
+    const channel = supabase
+      .channel('navbar-notifications-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cukai_requests' }, () => {
+        fetchPendingCounts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_goods' }, () => {
+        fetchPendingCounts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [ready, fetchPendingCounts]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('apht_seen_counts');
+    if (stored) {
+      try {
+        setSeenCounts(JSON.parse(stored));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  // Sync seenCounts when pending counts drop
+  useEffect(() => {
+    let changed = false;
+    const newSeen = { ...seenCounts };
+    if (seenCounts.cukai > pendingCukaiCount) {
+      newSeen.cukai = pendingCukaiCount;
+      changed = true;
+    }
+    if (seenCounts.outgoing > pendingOutgoingCount) {
+      newSeen.outgoing = pendingOutgoingCount;
+      changed = true;
+    }
+    if (changed) {
+      setSeenCounts(newSeen);
+      localStorage.setItem('apht_seen_counts', JSON.stringify(newSeen));
+    }
+  }, [pendingCukaiCount, pendingOutgoingCount, seenCounts]);
+
+  const unreadCukai = pendingCukaiCount > (seenCounts.cukai ?? 0) ? pendingCukaiCount - (seenCounts.cukai ?? 0) : 0;
+  const unreadOutgoing = pendingOutgoingCount > (seenCounts.outgoing ?? 0) ? pendingOutgoingCount - (seenCounts.outgoing ?? 0) : 0;
+  const totalUnread = unreadCukai + unreadOutgoing;
+
+  const handleCukaiClick = () => {
+    const newSeen = { ...seenCounts, cukai: pendingCukaiCount };
+    setSeenCounts(newSeen);
+    localStorage.setItem('apht_seen_counts', JSON.stringify(newSeen));
+    setShowNotifications(false);
+    navigate('/dashboard/pengajuan-cukai');
+  };
+
+  const handleOutgoingClick = () => {
+    const newSeen = { ...seenCounts, outgoing: pendingOutgoingCount };
+    setSeenCounts(newSeen);
+    localStorage.setItem('apht_seen_counts', JSON.stringify(newSeen));
+    setShowNotifications(false);
+    navigate('/dashboard/data-pemasaran');
+  };
+
+  const handleMarkAllAsRead = () => {
+    const newSeen = { cukai: pendingCukaiCount, outgoing: pendingOutgoingCount };
+    setSeenCounts(newSeen);
+    localStorage.setItem('apht_seen_counts', JSON.stringify(newSeen));
+  };
 
   // Title diambil dari label sidebar (sesuai permintaan: header = label sidebar)
   const headerTitle = useMemo(() => {
@@ -53,18 +129,6 @@ const Navbar = () => {
     return 'Dashboard';
   }, [location.pathname, isDirektur]);
 
-  const handleNotifClick = (n) => {
-    if (!n.is_read) markAsRead(n.id);
-    setShowNotif(false);
-    if (n.metadata?.request_id) {
-      navigate('/dashboard/pengajuan-cukai');
-    } else {
-      navigate('/dashboard/notifikasi');
-    }
-  };
-
-  const recentNotifs = notifications.slice(0, 5);
-
   return (
     <>
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
@@ -76,6 +140,86 @@ const Navbar = () => {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications((v) => !v)}
+                className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative"
+                title="Notifikasi"
+                aria-label="Notifications"
+              >
+                <span className="material-symbols-outlined text-[22px]">notifications</span>
+                {totalUnread > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[9px] font-bold">
+                    {totalUnread}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
+                  <div className="absolute right-0 top-full mt-1.5 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-2 z-50 animate-[slideDown_140ms_ease-out]">
+                    <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                      <span className="font-bold text-xs text-gray-850 dark:text-gray-200">Notifikasi</span>
+                      {totalUnread > 0 && (
+                        <button
+                          onClick={handleMarkAllAsRead}
+                          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                        >
+                          Tandai dibaca semua
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {pendingCukaiCount === 0 && pendingOutgoingCount === 0 ? (
+                        <div className="px-4 py-6 text-center text-xs text-gray-400 dark:text-gray-500">
+                          Tidak ada pengajuan pending
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-50 dark:divide-gray-750">
+                          {pendingCukaiCount > 0 && (
+                            <button
+                              onClick={handleCukaiClick}
+                              className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex gap-3 items-start transition-colors ${unreadCukai > 0 ? 'bg-blue-50/20 dark:bg-blue-900/10' : ''}`}
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                                <span className="material-symbols-outlined text-[18px]">assignment</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-gray-800 dark:text-gray-200">Pengajuan Cukai Baru</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">Ada {pendingCukaiCount} pengajuan pita cukai pending.</p>
+                              </div>
+                              {unreadCukai > 0 && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-blue-600 self-center"></div>
+                              )}
+                            </button>
+                          )}
+                          {pendingOutgoingCount > 0 && (
+                            <button
+                              onClick={handleOutgoingClick}
+                              className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex gap-3 items-start transition-colors ${unreadOutgoing > 0 ? 'bg-emerald-50/20 dark:bg-emerald-900/10' : ''}`}
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                                <span className="material-symbols-outlined text-[18px]">storefront</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-gray-800 dark:text-gray-200">Pengajuan Barang Keluar</p>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">Ada {pendingOutgoingCount} pengajuan barang keluar pending.</p>
+                              </div>
+                              {unreadOutgoing > 0 && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 self-center"></div>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
@@ -86,91 +230,13 @@ const Navbar = () => {
               <span className="material-symbols-outlined text-[22px]">{isDark ? 'light_mode' : 'dark_mode'}</span>
             </button>
 
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                onClick={() => { setShowNotif((v) => !v); setShowProfile(false); }}
-                className="relative w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                aria-label="Notifikasi"
-              >
-                <span className="material-symbols-outlined text-[22px]">notifications</span>
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-gray-900">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {showNotif && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowNotif(false)}></div>
-                  <div className="absolute right-0 top-full mt-2 w-[360px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-50 overflow-hidden animate-[slideDown_140ms_ease-out]">
-                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                      <div>
-                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Notifikasi</h3>
-                        <p className="text-[11px] text-gray-400 dark:text-gray-500">{unreadCount} belum dibaca</p>
-                      </div>
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={() => markAllAsRead()}
-                          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700"
-                        >
-                          Baca Semua
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="max-h-[360px] overflow-y-auto custom-scrollbar divide-y divide-gray-50 dark:divide-gray-800">
-                      {recentNotifs.length === 0 ? (
-                        <div className="px-4 py-10 text-center">
-                          <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 text-[32px]">notifications_off</span>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Belum ada notifikasi</p>
-                        </div>
-                      ) : (
-                        recentNotifs.map((n) => {
-                          const s = getTypeStyle(n.type);
-                          return (
-                            <button
-                              key={n.id}
-                              onClick={() => handleNotifClick(n)}
-                              className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${!n.is_read ? 'bg-blue-50/40 dark:bg-blue-900/10' : ''}`}
-                            >
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${s.color}`}>
-                                <span className="material-symbols-outlined text-[16px]">{n.icon || s.icon}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className={`text-[13px] truncate ${!n.is_read ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{n.title}</p>
-                                  {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mt-1.5"></span>}
-                                </div>
-                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{n.message}</p>
-                                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{formatTime(n.created_at)}</p>
-                              </div>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-
-                    <Link
-                      to="/dashboard/notifikasi"
-                      onClick={() => setShowNotif(false)}
-                      className="block w-full px-4 py-2.5 text-center text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800"
-                    >
-                      Lihat Semua
-                    </Link>
-                  </div>
-                </>
-              )}
-            </div>
-
             {/* Divider */}
             <div className="w-px h-7 bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
             {/* Profile */}
             <div className="relative">
               <button
-                onClick={() => { setShowProfile((v) => !v); setShowNotif(false); }}
+                onClick={() => setShowProfile((v) => !v)}
                 className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-[13px]">

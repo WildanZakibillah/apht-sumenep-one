@@ -8,11 +8,12 @@ import Modal from '../components/shared/Modal';
 import ConfirmDialog from '../components/shared/ConfirmDialog';
 import SearchBar from '../components/shared/SearchBar';
 import { useRoleAccess } from '../hooks/useRoleAccess';
+import KategoriCukai from './KategoriCukai';
 
 const TABS = [
   { id: 'brands', label: 'Merek & Produk', icon: 'sell', table: 'brands' },
-  { id: 'product_types', label: 'Jenis Produk', icon: 'category', table: 'product_types' },
   { id: 'regions', label: 'Wilayah', icon: 'map', table: 'regions' },
+  { id: 'cukai_categories', label: 'Kategori Cukai', icon: 'confirmation_number', table: 'cukai_categories' },
 ];
 
 const PRODUCT_CATEGORIES = ['SKT', 'SKM', 'SPM'];
@@ -20,12 +21,12 @@ const GOLONGAN = ['I', 'II', 'IIIA', 'IIIB'];
 
 const initialForm = {
   brands: { 
-    name: '', product_type_id: '', factory_id: '', description: '', status: 'active',
+    name: '', factory_id: '', description: '', status: 'active',
     product_name: '', product_code: '', cigarette_type: 'SKT', variant: '',
     sticks_per_pack: 12, packs_per_slop: 10, slops_per_carton: 20, 
-    hje: 0, excise_rate: 0, stock: 0, product_image: '', satuan: 'btg', bahan_kemasan: ''
+    hje: 0, excise_rate: 0, stock: 0, product_image: '', satuan: 'btg', bahan_kemasan: '',
+    kode_personalisasi: '', seri: '', warna: '', cukai_category_id: ''
   },
-  product_types: { name: '', category: 'SKT', isi_per_pak: 12 },
   regions: { name: '' },
 };
 
@@ -43,40 +44,37 @@ const DataMaster = () => {
   const [expandedFactories, setExpandedFactories] = useState({});
 
   // Lookup data for selects
-  const [productTypes, setProductTypes] = useState([]);
   const [factories, setFactories] = useState([]);
   const [allBrands, setAllBrands] = useState([]);
+  const [cukaiCategories, setCukaiCategories] = useState([]);
 
   const { ready } = useAuth();
   const { scopeQuery, isFactoryScoped, factoryId } = useRoleAccess();
   const toast = useToast();
 
   const loadLookup = async () => {
-    const [pt, fc, br] = await Promise.all([
-      supabase.from('product_types').select('id, name, category').order('name'),
+    const [fc, br, cc] = await Promise.all([
       scopeQuery(supabase.from('factories').select('id, name, nppbkc, logo_url').order('name'), 'id'),
-      scopeQuery(supabase.from('brands').select('id, name, factory_id, product_type_id').order('name')),
+      scopeQuery(supabase.from('brands').select('id, name, factory_id').order('name')),
+      supabase.from('cukai_categories').select('id, name, jenis_ht, hje, tarif_cukai, isi_per_bungkus').order('name'),
     ]);
-    if (pt.data) setProductTypes(pt.data);
     if (fc.data) setFactories(fc.data);
     if (br.data) setAllBrands(br.data);
+    if (cc.data) setCukaiCategories(cc.data);
   };
 
   const loadData = async () => {
     setLoading(true);
     let query;
     switch (activeTab) {
-      case 'product_types': 
-        query = supabase.from('product_types').select('*').order('name'); 
-        break;
       case 'brands': 
-        query = scopeQuery(supabase.from('brands').select('*, product_types(name), factories(name), cigarettes(*)').order('name')); 
+        query = scopeQuery(supabase.from('brands').select('*, factories(name), cigarettes(*, cukai_categories(*))').order('name')); 
         break;
       case 'regions': 
         query = supabase.from('regions').select('*').order('name'); 
         break;
       default: 
-        query = supabase.from('product_types').select('*');
+        query = scopeQuery(supabase.from('brands').select('*'));
     }
     const { data: result, error } = await query;
     if (error) toast.error('Gagal memuat data: ' + error.message);
@@ -112,14 +110,10 @@ const DataMaster = () => {
   const openEdit = (item) => {
     setEditing(item);
     switch (activeTab) {
-      case 'product_types':
-        setForm({ name: item.name || '', category: item.category || 'SKT', isi_per_pak: item.isi_per_pak || 12 });
-        break;
       case 'brands':
         const prod = item.cigarettes?.[0] || {};
         setForm({ 
           name: item.name || '', 
-          product_type_id: item.product_type_id || '', 
           factory_id: item.factory_id || '',
           description: item.description || '',
           status: item.status || 'active',
@@ -136,6 +130,10 @@ const DataMaster = () => {
           product_image: prod.product_image || '',
           satuan: prod.satuan || 'btg',
           bahan_kemasan: prod.bahan_kemasan || '',
+          kode_personalisasi: prod.kode_personalisasi || '',
+          seri: prod.seri || '',
+          warna: prod.warna || '',
+          cukai_category_id: prod.cukai_category_id || '',
         });
         break;
       case 'regions':
@@ -153,8 +151,7 @@ const DataMaster = () => {
   };
 
   const validate = () => {
-    if (activeTab === 'product_types') return form.name?.trim();
-    if (activeTab === 'brands') return form.name?.trim() && form.product_name?.trim() && form.factory_id && form.product_type_id && form.hje >= 0 && form.sticks_per_pack > 0;
+    if (activeTab === 'brands') return form.name?.trim() && form.product_name?.trim() && form.factory_id && form.cukai_category_id && form.hje >= 0 && form.sticks_per_pack > 0;
     if (activeTab === 'regions') return form.name?.trim();
     return false;
   };
@@ -170,7 +167,6 @@ const DataMaster = () => {
       if (activeTab === 'brands') {
         const brandPayload = { 
           name: form.name.trim(), 
-          product_type_id: form.product_type_id || null, 
           factory_id: form.factory_id,
           description: form.description?.trim() || null,
           status: form.status
@@ -189,9 +185,12 @@ const DataMaster = () => {
           product_image: form.product_image?.trim() || null,
           satuan: form.satuan?.trim() || 'btg',
           bahan_kemasan: form.bahan_kemasan?.trim() || null,
-          product_type_id: form.product_type_id,
           factory_id: form.factory_id,
-          status: form.status
+          status: form.status,
+          kode_personalisasi: form.kode_personalisasi?.trim() || null,
+          seri: form.seri?.trim() || null,
+          warna: form.warna?.trim() || null,
+          cukai_category_id: form.cukai_category_id || null,
         };
 
         if (editing) {
@@ -217,9 +216,6 @@ const DataMaster = () => {
       } else {
         let payload = {};
         switch (activeTab) {
-          case 'product_types':
-            payload = { name: form.name.trim(), category: form.category, isi_per_pak: parseInt(form.isi_per_pak) || 12 };
-            break;
           case 'regions':
             payload = { name: form.name.trim() };
             break;
@@ -239,7 +235,7 @@ const DataMaster = () => {
       }
       closeModal();
       await loadData();
-      if (activeTab === 'product_types' || activeTab === 'brands') loadLookup();
+      if (activeTab === 'brands') loadLookup();
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -256,7 +252,7 @@ const DataMaster = () => {
       toast.success('Data berhasil dihapus');
       setDeleteTarget(null);
       await loadData();
-      if (activeTab === 'product_types' || activeTab === 'brands') loadLookup();
+      if (activeTab === 'brands') loadLookup();
     } catch (err) {
       toast.error(err.message);
     }
@@ -271,10 +267,8 @@ const DataMaster = () => {
     if (!q) return result;
     return result.filter((item) => {
       switch (activeTab) {
-        case 'product_types': 
-          return item.name?.toLowerCase().includes(q) || item.category?.toLowerCase().includes(q);
         case 'brands': 
-          return item.name?.toLowerCase().includes(q) || item.product_types?.name?.toLowerCase().includes(q) || item.factories?.name?.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
+          return item.name?.toLowerCase().includes(q) || item.cigarettes?.[0]?.cukai_categories?.name?.toLowerCase().includes(q) || item.factories?.name?.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
         case 'regions': 
           return item.name?.toLowerCase().includes(q);
         default: 
@@ -350,25 +344,6 @@ const DataMaster = () => {
     );
 
     switch (activeTab) {
-      case 'product_types':
-        return (
-          <table className="w-full text-left">
-            <thead><tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-              <th className={thClass}>No</th><th className={thClass}>Nama Produk</th><th className={thClass}>Kategori</th><th className={thClass}>Isi/Pak</th><th className={`${thClass} text-center`}>Aksi</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-              {filteredData.map((item, i) => (
-                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                  <td className={`${tdClass} text-gray-400 dark:text-gray-500`}>{i + 1}</td>
-                  <td className={`${tdClass} font-semibold text-gray-900 dark:text-white`}>{item.name}</td>
-                  <td className={tdClass}><span className={`text-xs font-semibold px-2 py-1 rounded ${item.category === 'SKT' ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400' : item.category === 'SKM' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400'}`}>{item.category}</span></td>
-                  <td className={`${tdClass} text-gray-600 dark:text-gray-400`}>{item.isi_per_pak} Batang</td>
-                  {actionCell(item)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        );
       case 'brands':
         if (groupedBrandsData.length === 0) {
           return <div className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">Tidak ada pabrik atau merek yang sesuai pencarian</div>;
@@ -461,7 +436,8 @@ const DataMaster = () => {
                               <th className={thClass}>Jenis</th>
                               <th className={thClass}>HJE & Cukai</th>
                               <th className={thClass}>Kemasan (Struktur)</th>
-                              <th className={thClass}>Stok</th>
+                              <th className={thClass}>Stok Belum Dilekati</th>
+                              <th className={thClass}>Stok Siap Jual</th>
                               <th className={thClass}>Status</th>
                               <th className={`${thClass} text-center pr-6`}>Aksi</th>
                             </tr>
@@ -480,6 +456,12 @@ const DataMaster = () => {
                                       <div>
                                         <div className="font-semibold text-gray-900 dark:text-white">{prod.product_name || item.name}</div>
                                         <div className="text-[11px] text-gray-400 dark:text-gray-500">Merek: {item.name}</div>
+                                        {prod.cukai_categories && (
+                                          <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mt-0.5 flex items-center gap-1">
+                                            <span className="material-symbols-outlined text-[12px] font-bold">confirmation_number</span>
+                                            Cukai: {prod.cukai_categories.name} ({prod.cukai_categories.jenis_ht})
+                                          </div>
+                                        )}
                                         {item.description && (
                                           <div className="text-[10px] text-gray-400 dark:text-gray-500 font-normal italic mt-0.5">
                                             "{item.description}"
@@ -496,7 +478,7 @@ const DataMaster = () => {
                                   </td>
                                   <td className={`${tdClass} text-gray-600 dark:text-gray-400 font-medium`}>
                                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-400">
-                                      {prod.cigarette_type || item.product_types?.category || '-'}
+                                      {prod.cukai_categories?.jenis_ht || prod.cigarette_type || '-'}
                                     </span>
                                   </td>
                                   <td className={tdClass}>
@@ -507,13 +489,16 @@ const DataMaster = () => {
                                   </td>
                                   <td className={tdClass}>
                                     <div className="text-xs text-gray-700 dark:text-gray-300">
-                                      <div className="font-medium">{prod.sticks_per_pack || 0} {prod.satuan || 'btg'}/pak</div>
-                                      <div className="text-[10px] text-gray-400 dark:text-gray-500">{prod.packs_per_slop || 10} pak/slop • {prod.slops_per_carton || 20} slop/ktn</div>
+                                      <div className="font-medium">{prod.sticks_per_pack || 0} {prod.satuan || 'btg'}/kemasan</div>
+                                      <div className="text-[10px] text-gray-400 dark:text-gray-500">{prod.packs_per_slop || 10} bks/slop • {prod.slops_per_carton || 20} slop/ktn</div>
                                       {prod.bahan_kemasan && <div className="text-[10px] text-gray-400 dark:text-gray-500 italic">Bahan: {prod.bahan_kemasan}</div>}
                                     </div>
                                   </td>
+                                  <td className={`${tdClass} text-blue-600 dark:text-blue-400 font-bold`}>
+                                    {(prod.unaffixed_stock || 0).toLocaleString('id-ID')} bks
+                                  </td>
                                   <td className={`${tdClass} text-gray-900 dark:text-white font-bold`}>
-                                    {(prod.stock || 0).toLocaleString('id-ID')}
+                                    {(prod.stock || 0).toLocaleString('id-ID')} bks
                                   </td>
                                   <td className={tdClass}>
                                     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -579,27 +564,6 @@ const DataMaster = () => {
 
   const renderForm = () => {
     switch (activeTab) {
-      case 'product_types':
-        return (
-          <>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Nama Produk <span className="text-red-500">*</span></label>
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400" placeholder="Misal: SKT Reguler" required />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kategori</label>
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
-                  {PRODUCT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Isi per Pak</label>
-                <input type="number" min="1" value={form.isi_per_pak} onChange={(e) => setForm({ ...form, isi_per_pak: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
-              </div>
-            </div>
-          </>
-        );
       case 'brands':
         return (
           <>
@@ -629,18 +593,23 @@ const DataMaster = () => {
                 </div>
               </div>
               <div className="mt-3">
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Jenis Master Produk <span className="text-red-500">*</span></label>
-                <select value={form.product_type_id} onChange={(e) => {
-                  const ptId = e.target.value;
-                  const selectedPt = productTypes.find(p => p.id === ptId);
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kategori Cukai <span className="text-red-500">*</span></label>
+                <select value={form.cukai_category_id} onChange={(e) => {
+                  const catId = e.target.value;
+                  const selectedCat = cukaiCategories.find(c => c.id === catId);
                   setForm(prev => ({
                     ...prev,
-                    product_type_id: ptId,
-                    cigarette_type: selectedPt ? selectedPt.category : prev.cigarette_type
+                    cukai_category_id: catId,
+                    hje: selectedCat ? selectedCat.hje : prev.hje,
+                    excise_rate: selectedCat ? selectedCat.tarif_cukai : prev.excise_rate,
+                    sticks_per_pack: selectedCat ? selectedCat.isi_per_bungkus : prev.sticks_per_pack,
+                    cigarette_type: selectedCat ? selectedCat.jenis_ht : prev.cigarette_type
                   }));
                 }} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required>
-                  <option value="">Pilih jenis...</option>
-                  {productTypes.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.category})</option>)}
+                  <option value="">Pilih Kategori Cukai...</option>
+                  {cukaiCategories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.jenis_ht})</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -700,11 +669,11 @@ const DataMaster = () => {
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Isi per Pak (Batang) <span className="text-red-500">*</span></label>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Isi per Kemasan (Batang) <span className="text-red-500">*</span></label>
                   <input type="number" min="1" value={form.sticks_per_pack} onChange={(e) => setForm({ ...form, sticks_per_pack: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Bungkus per Slop</label>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kemasan per Slop</label>
                   <input type="number" min="1" value={form.packs_per_slop} onChange={(e) => setForm({ ...form, packs_per_slop: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
                 </div>
                 <div>
@@ -724,6 +693,27 @@ const DataMaster = () => {
                 <div>
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Bahan Kemasan</label>
                   <input value={form.bahan_kemasan} onChange={(e) => setForm({ ...form, bahan_kemasan: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Misal: Kertas, Plastik" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-blue-50/20 dark:bg-blue-950/10 rounded-lg border border-blue-100/50 dark:border-blue-900/20 mb-2">
+              <h4 className="text-xs font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px]">confirmation_number</span>
+                Spesifikasi Pita Cukai
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kode Personalisasi</label>
+                  <input value={form.kode_personalisasi || ''} onChange={(e) => setForm({ ...form, kode_personalisasi: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Misal: AB-123" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Seri</label>
+                  <input value={form.seri || ''} onChange={(e) => setForm({ ...form, seri: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Misal: 2026" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Warna</label>
+                  <input value={form.warna || ''} onChange={(e) => setForm({ ...form, warna: e.target.value })} className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Misal: Hijau, Merah" />
                 </div>
               </div>
             </div>
@@ -764,14 +754,18 @@ const DataMaster = () => {
 
   return (
     <div className="space-y-5 max-w-[1400px] mx-auto">
-      <PageHeader title="Konfigurasi Data Referensi" description="Kelola data referensi sistem: merek rokok, produk, jenis produk, dan wilayah.">
-        <button onClick={() => openCreate()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
-          <span className="material-symbols-outlined text-[18px]">add</span>
-          Tambah {currentTabLabel}
-        </button>
-      </PageHeader>
+      {activeTab !== 'cukai_categories' ? (
+        <PageHeader title="Konfigurasi Data Referensi" description="Kelola data referensi sistem: merek rokok, produk, jenis produk, dan wilayah.">
+          <button onClick={() => openCreate()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Tambah {currentTabLabel}
+          </button>
+        </PageHeader>
+      ) : (
+        <PageHeader title="Konfigurasi Data Referensi" description="Kelola data referensi sistem: merek rokok, produk, jenis produk, wilayah, dan kategori cukai." />
+      )}
 
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-6">
         <div className="border-b border-gray-100 dark:border-gray-800 px-5 flex items-center gap-1 overflow-x-auto">
           {TABS.map((tab) => (
             <button
@@ -787,60 +781,74 @@ const DataMaster = () => {
           ))}
         </div>
 
-        <div className="p-4 border-b border-gray-50 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari data..." className="md:w-96" />
-          
-          {activeTab === 'brands' && !isFactoryScoped && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Filter Pabrik:</span>
-              <select
-                value={selectedFactoryFilter}
-                onChange={(e) => setSelectedFactoryFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-              >
-                <option value="all">Semua Pabrik</option>
-                {factories.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
+        {activeTab !== 'cukai_categories' && (
+          <>
+            <div className="p-4 border-b border-gray-50 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <SearchBar value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari data..." className="md:w-96" />
+              
+              {activeTab === 'brands' && !isFactoryScoped && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Filter Pabrik:</span>
+                  <select
+                    value={selectedFactoryFilter}
+                    onChange={(e) => setSelectedFactoryFilter(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+                  >
+                    <option value="all">Semua Pabrik</option>
+                    {factories.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="overflow-x-auto">{renderTable()}</div>
+            <div className="overflow-x-auto">{renderTable()}</div>
 
-        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-          <span>Menampilkan {filteredData.length} dari {data.length} data</span>
-        </div>
+            <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+              <span>Menampilkan {filteredData.length} dari {data.length} data</span>
+            </div>
+          </>
+        )}
       </div>
 
-      <Modal
-        open={showModal}
-        onClose={closeModal}
-        title={editing ? `Edit ${currentTabLabel}` : `Tambah ${currentTabLabel}`}
-        footer={
-          <>
-            <button onClick={closeModal} disabled={saving} className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg disabled:opacity-50">Batal</button>
-            <button onClick={handleSubmit} disabled={saving} className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-              {saving ? 'Menyimpan...' : 'Simpan'}
-            </button>
-          </>
-        }
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">{renderForm()}</form>
-      </Modal>
+      {activeTab === 'cukai_categories' && (
+        <div className="mt-[-24px]">
+          <KategoriCukai hideHeader={true} />
+        </div>
+      )}
 
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title={`Hapus ${currentTabLabel}?`}
-        message="Data akan dihapus permanen dan tidak bisa dikembalikan. Lanjutkan?"
-        confirmText="Ya, Hapus"
-        cancelText="Batal"
-        variant="danger"
-        icon="delete"
-      />
+      {activeTab !== 'cukai_categories' && (
+        <>
+          <Modal
+            open={showModal}
+            onClose={closeModal}
+            title={editing ? `Edit ${currentTabLabel}` : `Tambah ${currentTabLabel}`}
+            footer={
+              <>
+                <button onClick={closeModal} disabled={saving} className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg disabled:opacity-50">Batal</button>
+                <button onClick={handleSubmit} disabled={saving} className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
+                  {saving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </>
+            }
+          >
+            <form onSubmit={handleSubmit} className="space-y-4">{renderForm()}</form>
+          </Modal>
+
+          <ConfirmDialog
+            open={!!deleteTarget}
+            onClose={() => setDeleteTarget(null)}
+            onConfirm={handleDelete}
+            title={`Hapus ${currentTabLabel}?`}
+            message="Data akan dihapus permanen dan tidak bisa dikembalikan. Lanjutkan?"
+            confirmText="Ya, Hapus"
+            cancelText="Batal"
+            variant="danger"
+            icon="delete"
+          />
+        </>
+      )}
     </div>
   );
 };

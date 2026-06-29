@@ -147,7 +147,6 @@ class ProfileDetailScreen extends StatelessWidget {
 
     final items = [
       _InfoItem('Nama Pabrik', data['name'] ?? '-'),
-      _InfoItem('Kode Pabrik', data['code'] ?? '-'),
       _InfoItem('NPPBKC', data['nppbkc'] ?? '-'),
       _InfoItem('NIB', data['nib'] ?? '-'),
       _InfoItem('NPWP', data['npwp'] ?? '-'),

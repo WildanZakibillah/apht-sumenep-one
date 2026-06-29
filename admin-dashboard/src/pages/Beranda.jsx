@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { useNotifications } from '../hooks/useNotifications';
 import { SkeletonCard, SkeletonChart } from '../components/shared/Skeleton';
 import StatCard from '../components/shared/StatCard';
 import {
@@ -27,7 +26,7 @@ const ProdTooltip = ({ active, payload, isDark }) => {
       }}
     >
       <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
-      <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
+      <div className="text-[10px] opacity-60 mb-1.5">NPPBKC: {d.nppbkc}</div>
       <div className="flex items-center justify-between gap-3 mb-1">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -117,7 +116,6 @@ const AutoSlider = ({ items }) => {
 const Beranda = () => {
   const { profile, ready } = useAuth();
   const { isDark } = useTheme();
-  const { unreadCount } = useNotifications();
   const { scopeQuery, isFactoryScoped, isDirektur } = useRoleAccess();
   const [loading, setLoading] = useState(true);
   const [factories, setFactories] = useState([]);
@@ -142,11 +140,11 @@ const Beranda = () => {
     const fetchAll = async () => {
       setLoading(true);
       const [factRes, allocRes, prodRes, goodsRes, cukaiRes] = await Promise.all([
-        scopeQuery(supabase.from('factories').select('*'), 'id'),
-        scopeQuery(supabase.from('cukai_allocations').select('*, factories(name, code)')),
-        scopeQuery(supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false })),
+        scopeQuery(supabase.from('factories').select('id, name, nppbkc, status'), 'id'),
+        scopeQuery(supabase.from('cukai_allocations').select('*, factories(name, nppbkc)')),
+        scopeQuery(supabase.from('productions').select('*, factories(name, nppbkc)').order('doc_date', { ascending: false })),
         scopeQuery(supabase.from('outgoing_goods').select('*, factories(name)').order('transaction_date', { ascending: false }).limit(500)),
-        scopeQuery(supabase.from('cukai_requests').select('*, factories(name, code)').order('created_at', { ascending: false }).limit(50)),
+        scopeQuery(supabase.from('cukai_requests').select('*, factories(name, nppbkc), cigarettes(product_name, brands(name))').order('created_at', { ascending: false }).limit(50)),
       ]);
       if (factRes.data) setFactories(factRes.data);
       if (allocRes.data) setAllocations(allocRes.data);
@@ -164,10 +162,10 @@ const Beranda = () => {
   }, [productions, currentMonth]);
 
   const monthGoods = useMemo(() => {
-    return outgoingGoods.filter((g) => g.transaction_date?.startsWith(currentMonth));
+    return outgoingGoods.filter((g) => g.status === 'approved' && g.transaction_date?.startsWith(currentMonth));
   }, [outgoingGoods, currentMonth]);
 
-  // Today's cukai requests
+  // Today's Cukai requests
   const todayCukaiRequests = useMemo(() => {
     return cukaiRequests.filter((r) => r.created_at?.slice(0, 10) === todayDate);
   }, [cukaiRequests, todayDate]);
@@ -180,19 +178,19 @@ const Beranda = () => {
   const totalQuota = allocations.reduce((s, a) => s + (a.quota || 0), 0);
   const totalUsed = allocations.reduce((s, a) => s + (a.used || 0), 0);
   const totalDamaged = allocations.reduce((s, a) => s + (a.damaged || 0), 0);
-  const totalRemaining = totalQuota - totalUsed - totalDamaged;
+  const totalRemaining = totalQuota - totalUsed;
   const totalKemasan = monthProductions.reduce((s, p) => s + (p.jumlah_kemasan || 0), 0);
   const totalRevenue = monthGoods.reduce((s, g) => s + Number(g.total_value || 0), 0);
-  const criticalFactories = allocations.filter((a) => a.quota > 0 && ((a.quota - a.used - (a.damaged || 0)) / a.quota) <= 0.1);
+  const criticalFactories = allocations.filter((a) => a.quota > 0 && ((a.quota - a.used) / a.quota) <= 0.1);
 
-  // Production per factory — use CODE on axis, keep NAME + batang + kemasan in tooltip
+  // Production per factory — use NPPBKC on axis, keep NAME + batang + kemasan in tooltip
   const prodPerFactory = useMemo(() => {
     const map = {};
     monthProductions.forEach((p) => {
-      const code = p.factories?.code || '-';
+      const nppbkc = p.factories?.nppbkc || '-';
       const name = p.factories?.name || 'Unknown';
-      const key = code;
-      if (!map[key]) map[key] = { code, name, kemasan: 0, batang: 0 };
+      const key = nppbkc;
+      if (!map[key]) map[key] = { nppbkc, name, kemasan: 0, batang: 0 };
       map[key].kemasan += p.jumlah_kemasan || 0;
       map[key].batang += p.jumlah_isi || 0;
     });
@@ -234,6 +232,7 @@ const Beranda = () => {
       if (m) m.produksi += p.jumlah_kemasan || 0;
     });
     outgoingGoods.forEach((g) => {
+      if (g.status !== 'approved') return;
       const key = g.transaction_date?.slice(0, 7);
       const m = months.find((mo) => mo.key === key);
       if (m) m.pemasaran += g.volume || 0;
@@ -330,12 +329,6 @@ const Beranda = () => {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {unreadCount > 0 && (
-              <Link to="/dashboard/notifikasi" className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-xl text-sm font-medium transition-colors border border-white/10">
-                <span className="material-symbols-outlined text-[18px]">notifications</span>
-                {unreadCount} baru
-              </Link>
-            )}
             <div className="flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-sm rounded-xl text-sm font-medium border border-white/10">
               <span className="material-symbols-outlined text-[18px]">calendar_today</span>
               <span>{todayLabel}</span>
@@ -475,7 +468,7 @@ const Beranda = () => {
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={prodPerFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-                  <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
+                  <XAxis dataKey="nppbkc" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
                   <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
                   <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={(props) => <ProdTooltip {...props} isDark={isDark} />} />
                   <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
@@ -503,7 +496,7 @@ const Beranda = () => {
               </div>
             ) : (
               criticalFactories.map((alloc) => {
-                const remaining = alloc.quota - (alloc.used || 0) - (alloc.damaged || 0);
+                const remaining = alloc.quota - (alloc.used || 0);
                 const percent = Math.round((remaining / alloc.quota) * 100);
                 return (
                   <div key={alloc.id} className="p-3.5 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
@@ -561,14 +554,14 @@ const Beranda = () => {
                       <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                         {r.factories?.name || 'Pabrik'}
                       </span>
-                      {r.factories?.code && (
+                      {r.factories?.nppbkc && (
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                          {r.factories.code}
+                          {r.factories.nppbkc}
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                      {r.doc_number || '-'} · {r.jenis_pengajuan || '-'} · {time}
+                      {r.doc_number || '-'} · {r.jenis_pengajuan || '-'} {r.cigarettes ? `· ${r.cigarettes.product_name} (${r.cigarettes.brands?.name || ''})` : ''} · {time}
                     </p>
                   </div>
                   {getStatusBadge(r.status)}

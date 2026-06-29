@@ -5,7 +5,8 @@ import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../providers/auth_provider.dart';
 import '../login_screen.dart';
-import '../profile_detail_screen.dart';
+import '../account_info_screen.dart';
+import '../factory_info_screen.dart';
 
 class ProfilView extends StatefulWidget {
   const ProfilView({super.key});
@@ -71,19 +72,42 @@ class _ProfilViewState extends State<ProfilView> {
               children: [
                 _buildUserCard(isDark, cardBg, cardBorder, profile),
                 const SizedBox(height: 24),
-                _buildSectionLabel('INFORMASI AKUN', isDark),
+                _buildSectionLabel('INFORMASI', isDark),
                 const SizedBox(height: 8),
-                _buildAccountInfoCard(isDark, cardBg, cardBorder, dividerColor, profile),
-                const SizedBox(height: 24),
-                _buildSectionLabel('INFORMASI PABRIK', isDark),
-                const SizedBox(height: 8),
-                _buildFactoryInfoCard(isDark, cardBg, cardBorder, dividerColor),
+                Container(
+                  decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
+                  child: Column(children: [
+                    _buildSettingRow(
+                      isDark: isDark,
+                      icon: Icons.person_outline_rounded,
+                      iconColor: AppTheme.primary,
+                      title: 'Informasi Akun',
+                      subtitle: 'Detail data profil akun Anda',
+                      onTap: () {
+                        if (profile != null) {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => AccountInfoScreen(profile: profile)));
+                        }
+                      },
+                    ),
+                    Divider(height: 1, color: dividerColor),
+                    _buildSettingRow(
+                      isDark: isDark,
+                      icon: Icons.factory_outlined,
+                      iconColor: const Color(0xFF6366F1),
+                      title: 'Informasi Pabrik',
+                      subtitle: 'Detail data spesifikasi pabrik Anda',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => FactoryInfoScreen(factoryData: _factoryData)));
+                      },
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 24),
                 _buildSectionLabel('PREFERENSI', isDark),
                 const SizedBox(height: 8),
                 _buildPreferensiCard(context, isDark, cardBg, cardBorder, dividerColor),
                 const SizedBox(height: 24),
-                _buildSectionLabel('TENTANG', isDark),
+                _buildSectionLabel('TENTANG & BANTUAN', isDark),
                 const SizedBox(height: 8),
                 _buildAboutCard(isDark, cardBg, cardBorder, dividerColor),
                 const SizedBox(height: 24),
@@ -160,7 +184,7 @@ class _ProfilViewState extends State<ProfilView> {
     return InkWell(
       onTap: () {
         if (profile != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileDetailScreen(profile: profile, factoryData: _factoryData)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => AccountInfoScreen(profile: profile)));
         }
       },
       borderRadius: BorderRadius.circular(20),
@@ -187,124 +211,7 @@ class _ProfilViewState extends State<ProfilView> {
     );
   }
 
-  Widget _buildAccountInfoCard(bool isDark, Color cardBg, Color cardBorder, Color divider, profile) {
-    final isActive = profile?.isActive == true;
-    return Container(
-      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
-      child: Column(children: [
-        _buildInfoRow('Nama Lengkap', profile?.fullName ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Email', profile?.email ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Telepon', profile?.phone ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Role', profile != null ? AppConstants.roleDisplayName(profile.role) : '-', isDark, divider, hasBorder: true),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Status', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: isActive ? const Color(0xFF10B981).withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 7, height: 7, decoration: BoxDecoration(color: isActive ? const Color(0xFF10B981) : AppTheme.error, shape: BoxShape.circle)),
-                const SizedBox(width: 6),
-                Text(isActive ? 'Aktif' : 'Nonaktif', style: TextStyle(color: isActive ? const Color(0xFF10B981) : AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700)),
-              ]),
-            ),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildFactoryInfoCard(bool isDark, Color cardBg, Color cardBorder, Color divider) {
-    final logoUrl = _factoryData?['logo_url'] as String?;
-    final latitude = _factoryData?['latitude'];
-    final longitude = _factoryData?['longitude'];
-    final coordinatesText = (latitude != null && longitude != null) ? '$latitude, $longitude' : '-';
-
-    return Container(
-      decoration: BoxDecoration(color: cardBg, borderRadius: BorderRadius.circular(20), border: Border.all(color: cardBorder)),
-      child: Column(children: [
-        if (logoUrl != null && logoUrl.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Center(
-              child: Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: divider),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Image.network(
-                      logoUrl,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Icon(Icons.factory_outlined, color: AppTheme.primary, size: 40),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Divider(height: 1, color: divider),
-        ],
-        _buildInfoRow('Nama Pabrik', _factoryData?['name'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Kode Pabrik', _factoryData?['code'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('NPPBKC', _factoryData?['nppbkc'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('NIB', _factoryData?['nib'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('NPWP', _factoryData?['npwp'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Pemilik', _factoryData?['owner_name'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Direktur', _factoryData?['director_name'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Golongan', _factoryData?['golongan'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Telepon Pabrik', _factoryData?['phone'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Email Pabrik', _factoryData?['email'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Alamat', _factoryData?['address'] ?? '-', isDark, divider, hasBorder: true),
-        _buildInfoRow('Koordinat', coordinatesText, isDark, divider, hasBorder: true),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Status Pabrik', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981).withValues(alpha: 0.1) : AppTheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 7, height: 7, decoration: BoxDecoration(color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981) : AppTheme.error, shape: BoxShape.circle)),
-                const SizedBox(width: 6),
-                Text(_factoryData?['status'] == 'active' ? 'Aktif' : 'Nonaktif', style: TextStyle(color: _factoryData?['status'] == 'active' ? const Color(0xFF10B981) : AppTheme.error, fontSize: 13, fontWeight: FontWeight.w700)),
-              ]),
-            ),
-          ]),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, bool isDark, Color divider, {bool hasBorder = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      decoration: BoxDecoration(border: hasBorder ? Border(bottom: BorderSide(color: divider)) : null),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurface, fontSize: 14)),
-        Flexible(child: Text(value, style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w600), textAlign: TextAlign.right)),
-      ]),
-    );
-  }
+  // Info cards are now in separate screens
 
   Widget _buildPreferensiCard(BuildContext context, bool isDark, Color cardBg, Color cardBorder, Color divider) {
     return Container(

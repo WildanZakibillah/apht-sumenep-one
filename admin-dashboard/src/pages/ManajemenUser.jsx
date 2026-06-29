@@ -43,8 +43,8 @@ const ManajemenUser = () => {
     // This avoids "Infinite recursion detected in policy for relation profiles" error
     const adminClient = supabaseAdmin || supabase;
     const [u, f] = await Promise.all([
-      scopeQuery(adminClient.from('profiles').select('*, factories(name, code)').order('created_at', { ascending: false }), 'factory_id'),
-      scopeQuery(supabase.from('factories').select('id, name, code').order('name'), 'id'),
+      scopeQuery(adminClient.from('profiles').select('*, factories(name, nppbkc)').order('created_at', { ascending: false }), 'factory_id'),
+      scopeQuery(supabase.from('factories').select('id, name, nppbkc').order('name'), 'id'),
     ]);
     if (u.error) toast.error('Gagal memuat user: ' + u.error.message);
     else if (u.data) setUsers(u.data);

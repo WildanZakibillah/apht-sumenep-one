@@ -22,9 +22,48 @@ const emptyGoodsForm = {
   volume: 0,
   total_value: 0,
   payment_method: 'tunai',
+  unit: 'Karton',
+  input_qty: '',
 };
 
 const emptyDistForm = { name: '', region_id: '', contact_info: '' };
+
+const formatVolume = (volume, cig) => {
+  if (!cig || !cig.sticks_per_pack) return `${Number(volume).toLocaleString()} btg`;
+  const sticksPerPack = cig.sticks_per_pack;
+  const packsPerSlop = cig.packs_per_slop || 10;
+  const slopsPerCarton = cig.slops_per_carton || 20;
+
+  const sticksPerSlop = sticksPerPack * packsPerSlop;
+  const sticksPerCarton = sticksPerSlop * slopsPerCarton;
+
+  const cartons = Math.floor(volume / sticksPerCarton);
+  let remaining = volume % sticksPerCarton;
+
+  const slops = Math.floor(remaining / sticksPerSlop);
+  remaining = remaining % sticksPerSlop;
+
+  const packs = Math.floor(remaining / sticksPerPack);
+  const sticks = remaining % sticksPerPack;
+
+  if (volume % sticksPerCarton === 0 && cartons > 0) {
+    return `${cartons.toLocaleString()} karton`;
+  }
+  if (volume % sticksPerPack === 0) {
+    const parts = [];
+    if (cartons > 0) parts.push(`${cartons} karton`);
+    if (slops > 0) parts.push(`${slops} slop`);
+    if (packs > 0) parts.push(`${packs} kemasan`);
+    return parts.join(' + ') || `${(volume / sticksPerPack).toLocaleString()} kemasan`;
+  }
+
+  const parts = [];
+  if (cartons > 0) parts.push(`${cartons} karton`);
+  if (slops > 0) parts.push(`${slops} slop`);
+  if (packs > 0) parts.push(`${packs} kemasan`);
+  if (sticks > 0) parts.push(`${sticks} btg`);
+  return parts.join(' + ');
+};
 
 const DataPemasaran = () => {
   const { isDark } = useTheme();
@@ -47,6 +86,7 @@ const DataPemasaran = () => {
   const [goodsForm, setGoodsForm] = useState(emptyGoodsForm);
   const [savingGoods, setSavingGoods] = useState(false);
   const [deleteGoodsTarget, setDeleteGoodsTarget] = useState(null);
+  const [actionGoodsTarget, setActionGoodsTarget] = useState(null);
 
   // Distributor modal
   const [showDistModal, setShowDistModal] = useState(false);
@@ -58,10 +98,10 @@ const DataPemasaran = () => {
   const loadData = async () => {
     setLoading(true);
     const [g, d, f, p, r] = await Promise.all([
-      scopeQuery(supabase.from('outgoing_goods').select('*, factories(name), regions(name), cigarettes(product_name, variant, brands(name))').order('transaction_date', { ascending: false }).limit(200)),
+      scopeQuery(supabase.from('outgoing_goods').select('*, factories(name), regions(name), cigarettes(product_name, variant, sticks_per_pack, packs_per_slop, slops_per_carton, brands(name))').order('transaction_date', { ascending: false }).limit(200)),
       supabase.from('distributors').select('*, regions(name)').order('name'),
       scopeQuery(supabase.from('factories').select('id, name').order('name'), 'id'),
-      scopeQuery(supabase.from('cigarettes').select('id, brand_id, product_name, variant, brands(name), factories(name)').order('id')),
+      scopeQuery(supabase.from('cigarettes').select('id, brand_id, product_name, variant, sticks_per_pack, packs_per_slop, slops_per_carton, hje, brands(name), factories(name)').order('id')),
       supabase.from('regions').select('id, name').order('name'),
     ]);
     if (g.error) toast.error('Gagal memuat transaksi: ' + g.error.message);
@@ -77,6 +117,43 @@ const DataPemasaran = () => {
     if (ready) loadData();
   }, [ready]); // eslint-disable-line
 
+  useEffect(() => {
+    if (!goodsForm.product_id || !goodsForm.input_qty) return;
+    const cig = products.find(p => p.id === goodsForm.product_id);
+    if (!cig) return;
+    
+    const inputQty = parseFloat(goodsForm.input_qty) || 0;
+    const sticksPerPack = cig.sticks_per_pack || 12;
+    const packsPerSlop = cig.packs_per_slop || 10;
+    const slopsPerCarton = cig.slops_per_carton || 20;
+    const hje = cig.hje || 0;
+
+    let computedSticks = 0;
+    let computedPacks = 0;
+
+    if (goodsForm.unit === 'Karton') {
+      const packsPerCarton = packsPerSlop * slopsPerCarton;
+      computedPacks = inputQty * packsPerCarton;
+      computedSticks = computedPacks * sticksPerPack;
+    } else { // 'Kemasan'
+      computedPacks = inputQty;
+      computedSticks = inputQty * sticksPerPack;
+    }
+
+    const computedTotalValue = computedPacks * hje;
+
+    setGoodsForm(prev => {
+      if (prev.volume === computedSticks && prev.total_value === computedTotalValue) {
+        return prev;
+      }
+      return {
+        ...prev,
+        volume: computedSticks,
+        total_value: computedTotalValue
+      };
+    });
+  }, [goodsForm.product_id, goodsForm.unit, goodsForm.input_qty, products]);
+
   // Factory name for direktur context
   const factoryName = isDirektur && factories.length > 0 ? factories[0]?.name : null;
 
@@ -88,8 +165,9 @@ const DataPemasaran = () => {
     return matchFactory && matchMonth && matchSearch;
   });
 
-  const totalVolume = filteredGoods.reduce((sum, g) => sum + (g.volume || 0), 0);
-  const totalValue = filteredGoods.reduce((sum, g) => sum + Number(g.total_value || 0), 0);
+  const approvedGoods = filteredGoods.filter(g => g.status === 'approved');
+  const totalVolume = approvedGoods.reduce((sum, g) => sum + (g.volume || 0), 0);
+  const totalValue = approvedGoods.reduce((sum, g) => sum + Number(g.total_value || 0), 0);
 
   const formatCurrency = (num) => {
     if (num >= 1000000000) return `Rp ${(num / 1000000000).toFixed(1)} M`;
@@ -129,6 +207,28 @@ const DataPemasaran = () => {
   };
   const openGoodsEdit = (g) => {
     setEditingGoods(g);
+    
+    const cig = products.find(p => p.id === g.product_id) || g.cigarettes;
+    let unit = 'Kemasan';
+    let input_qty = 0;
+    if (cig && cig.sticks_per_pack) {
+      const sticksPerPack = cig.sticks_per_pack;
+      const packsPerSlop = cig.packs_per_slop || 10;
+      const slopsPerCarton = cig.slops_per_carton || 20;
+      const sticksPerCarton = sticksPerPack * packsPerSlop * slopsPerCarton;
+      
+      if (g.volume % sticksPerCarton === 0 && g.volume > 0) {
+        unit = 'Karton';
+        input_qty = g.volume / sticksPerCarton;
+      } else {
+        unit = 'Kemasan';
+        input_qty = g.volume / sticksPerPack;
+      }
+    } else {
+      unit = 'Kemasan';
+      input_qty = g.volume;
+    }
+
     setGoodsForm({
       transaction_date: g.transaction_date || '',
       customer_name: g.customer_name || '',
@@ -138,6 +238,8 @@ const DataPemasaran = () => {
       volume: g.volume || 0,
       total_value: g.total_value || 0,
       payment_method: g.payment_method || 'tunai',
+      unit: unit,
+      input_qty: input_qty,
     });
     setShowGoodsModal(true);
   };
@@ -158,6 +260,7 @@ const DataPemasaran = () => {
         volume: parseInt(goodsForm.volume) || 0,
         total_value: parseFloat(goodsForm.total_value) || 0,
         payment_method: goodsForm.payment_method,
+        status: editingGoods ? editingGoods.status : (isFactoryScoped ? 'pending' : 'approved')
       };
       if (editingGoods) {
         const { error } = await supabase.from('outgoing_goods').update(payload).eq('id', editingGoods.id);
@@ -167,7 +270,7 @@ const DataPemasaran = () => {
         payload.created_by = user.id;
         const { error } = await supabase.from('outgoing_goods').insert(payload);
         if (error) throw error;
-        toast.success('Transaksi ditambahkan');
+        toast.success(isFactoryScoped ? 'Pengajuan dikirim, menunggu persetujuan admin' : 'Transaksi ditambahkan');
       }
       setShowGoodsModal(false);
       setEditingGoods(null);
@@ -188,6 +291,34 @@ const DataPemasaran = () => {
       await loadData();
     } catch (err) {
       toast.error(err.message);
+    }
+  };
+
+  const handleGoodsAction = async () => {
+    if (!actionGoodsTarget) return;
+    try {
+      const statusVal = actionGoodsTarget.action === 'approve' ? 'approved' : 'rejected';
+      const { error } = await supabase
+        .from('outgoing_goods')
+        .update({ status: statusVal })
+        .eq('id', actionGoodsTarget.id);
+      if (error) throw error;
+      toast.success(`Transaksi berhasil ${statusVal === 'approved' ? 'disetujui' : 'ditolak'}`);
+      setActionGoodsTarget(null);
+      await loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'approved':
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400">Disetujui</span>;
+      case 'rejected':
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">Ditolak</span>;
+      default:
+        return <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">Menunggu</span>;
     }
   };
 
@@ -363,22 +494,37 @@ const DataPemasaran = () => {
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Volume</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Nilai</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Bayar</th>
+                <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Status</th>
                 <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredGoods.length === 0 ? (
-                <tr><td colSpan="7" className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">{search ? 'Tidak ada hasil pencarian' : 'Belum ada transaksi'}</td></tr>
+                <tr><td colSpan={isFactoryScoped ? "7" : "8"} className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">{search ? 'Tidak ada hasil pencarian' : 'Belum ada transaksi'}</td></tr>
               ) : (
                 filteredGoods.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                     <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">{item.transaction_date}</td>
                     <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 dark:text-white">{item.customer_name}</td>
                     {!isFactoryScoped && <td className="px-5 py-3.5 text-sm text-gray-600 dark:text-gray-400">{item.factories?.name || '-'}</td>}
-                    <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">{Number(item.volume).toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">
+                      <div>{formatVolume(item.volume, item.cigarettes)}</div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">{Number(item.volume).toLocaleString()} btg</div>
+                    </td>
                     <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium text-right">{formatCurrency(item.total_value)}</td>
                     <td className="px-5 py-3.5">
                       <span className={`text-[11px] font-bold px-2 py-1 rounded ${item.payment_method === 'tunai' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'}`}>{item.payment_method === 'tunai' ? 'Tunai' : 'Kredit'}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex flex-col items-start gap-1">
+                        {getStatusBadge(item.status)}
+                        {!isFactoryScoped && item.status === 'pending' && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <button onClick={() => setActionGoodsTarget({ id: item.id, action: 'approve', name: item.customer_name })} className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded transition-colors shadow-sm">Setujui</button>
+                            <button onClick={() => setActionGoodsTarget({ id: item.id, action: 'reject', name: item.customer_name })} className="px-2 py-0.5 bg-red-500 hover:bg-red-650 text-white text-[10px] font-bold rounded transition-colors shadow-sm">Tolak</button>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -497,12 +643,25 @@ const DataPemasaran = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Volume (btg)</label>
-              <input type="number" min="0" value={goodsForm.volume} onChange={(e) => setGoodsForm({ ...goodsForm, volume: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Jumlah / Kuantitas <span className="text-red-500">*</span></label>
+              <input type="number" min="0" value={goodsForm.input_qty} onChange={(e) => setGoodsForm({ ...goodsForm, input_qty: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Total Nilai (Rp)</label>
-              <input type="number" min="0" step="0.01" value={goodsForm.total_value} onChange={(e) => setGoodsForm({ ...goodsForm, total_value: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" />
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Satuan</label>
+              <select value={goodsForm.unit} onChange={(e) => setGoodsForm({ ...goodsForm, unit: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400">
+                <option value="Karton">Karton</option>
+                <option value="Kemasan">Kemasan</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-1.5 block">Konversi Batang (Otomatis)</label>
+              <input type="text" value={goodsForm.volume ? `${Number(goodsForm.volume).toLocaleString()} btg` : '0 btg'} disabled className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-400 dark:text-gray-500 mb-1.5 block">Total Nilai (Rp - Otomatis)</label>
+              <input type="text" value={formatCurrency(goodsForm.total_value || 0)} disabled className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-800 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 cursor-not-allowed" />
             </div>
           </div>
         </form>
@@ -541,6 +700,20 @@ const DataPemasaran = () => {
 
       <ConfirmDialog open={!!deleteGoodsTarget} onClose={() => setDeleteGoodsTarget(null)} onConfirm={handleGoodsDelete} title="Hapus Transaksi?" message={`Hapus transaksi ${deleteGoodsTarget?.customer_name}? Tidak dapat dikembalikan.`} confirmText="Ya, Hapus" cancelText="Batal" variant="danger" icon="delete" />
       <ConfirmDialog open={!!deleteDistTarget} onClose={() => setDeleteDistTarget(null)} onConfirm={handleDistDelete} title="Hapus Distributor?" message={`Hapus distributor ${deleteDistTarget?.name}? Tidak dapat dikembalikan.`} confirmText="Ya, Hapus" cancelText="Batal" variant="danger" icon="delete" />
+      <ConfirmDialog 
+        open={!!actionGoodsTarget} 
+        onClose={() => setActionGoodsTarget(null)} 
+        onConfirm={handleGoodsAction} 
+        title={actionGoodsTarget?.action === 'approve' ? 'Setujui Pengeluaran?' : 'Tolak Pengeluaran?'} 
+        message={actionGoodsTarget?.action === 'approve' 
+          ? `Apakah Anda yakin ingin menyetujui pengeluaran barang untuk ${actionGoodsTarget?.name}? Tindakan ini akan memotong stok rokok.` 
+          : `Apakah Anda yakin ingin menolak pengeluaran barang untuk ${actionGoodsTarget?.name}?`
+        } 
+        confirmText="Ya, Proses" 
+        cancelText="Batal" 
+        variant={actionGoodsTarget?.action === 'approve' ? 'success' : 'danger'} 
+        icon={actionGoodsTarget?.action === 'approve' ? 'check_circle' : 'cancel'} 
+      />
     </div>
   );
 };

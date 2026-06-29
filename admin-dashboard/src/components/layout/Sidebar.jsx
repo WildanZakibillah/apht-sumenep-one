@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
-import { useNotifications } from '../../hooks/useNotifications';
 import { useAppContext } from '../../context/AppContext';
 import { useRoleAccess } from '../../hooks/useRoleAccess';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import logoApht from '../../assets/Logo apht.png';
 
-export const getNavSections = (isFactoryScoped) => {
+export const getNavSections = (isFactoryScoped, pendingCukai = 0, pendingOutgoing = 0) => {
   const sections = [
     {
       title: 'OVERVIEW',
@@ -20,9 +20,9 @@ export const getNavSections = (isFactoryScoped) => {
       title: 'OPERASIONAL',
       items: [
         { id: 'production', icon: 'inventory_2', label: 'Data Produksi', path: '/dashboard/data-produksi' },
-        { id: 'excise', icon: 'confirmation_number', label: 'Pantau Cukai', path: '/dashboard/pantau-cukai' },
-        { id: 'cukai-requests', icon: 'assignment', label: 'Pengajuan Cukai', path: '/dashboard/pengajuan-cukai' },
-        { id: 'marketing', icon: 'storefront', label: 'Data Pemasaran', path: '/dashboard/data-pemasaran' },
+        { id: 'excise', icon: 'confirmation_number', label: 'Stok & Kuota Cukai', path: '/dashboard/pantau-cukai' },
+        { id: 'cukai-requests', icon: 'assignment', label: 'Pengajuan Cukai', path: '/dashboard/pengajuan-cukai', badgeCount: pendingCukai },
+        { id: 'marketing', icon: 'storefront', label: 'Data Pemasaran', path: '/dashboard/data-pemasaran', badgeCount: pendingOutgoing },
         { id: 'stock', icon: 'inventory', label: 'Manajemen Stok', path: '/dashboard/data-stok' },
       ],
     },
@@ -31,7 +31,6 @@ export const getNavSections = (isFactoryScoped) => {
       items: [
         { id: 'master', icon: 'category', label: 'Data Master', path: '/dashboard/data-master' },
         ...(!isFactoryScoped ? [{ id: 'users', icon: 'people', label: 'Manajemen User', path: '/dashboard/manajemen-pengguna' }] : []),
-        { id: 'notifications', icon: 'notifications_active', label: 'Notifikasi', path: '/dashboard/notifikasi', badge: 'notif' },
         { id: 'settings', icon: 'settings_suggest', label: 'Pengaturan', path: '/dashboard/settings' },
       ],
     },
@@ -40,15 +39,60 @@ export const getNavSections = (isFactoryScoped) => {
 };
 
 const Sidebar = () => {
-  const { signOut } = useAuth();
-  const { unreadCount } = useNotifications();
+  const { signOut, ready } = useAuth();
   const { sidebarCollapsed, setSidebarCollapsed } = useAppContext();
-  const { roleLabel, isFactoryScoped } = useRoleAccess();
+  const { roleLabel, isFactoryScoped, factoryId } = useRoleAccess();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [pendingCukaiCount, setPendingCukaiCount] = useState(0);
+  const [pendingOutgoingCount, setPendingOutgoingCount] = useState(0);
 
   const collapsed = sidebarCollapsed;
   const width = collapsed ? 'w-[72px]' : 'w-[260px]';
-  const navSections = getNavSections(isFactoryScoped);
+
+  const fetchPendingCounts = useCallback(async () => {
+    if (!ready) return;
+    try {
+      // Query pending cukai requests count
+      let cukaiQuery = supabase.from('cukai_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+      if (isFactoryScoped && factoryId) {
+        cukaiQuery = cukaiQuery.eq('factory_id', factoryId);
+      }
+      const { count: cCount, error: cErr } = await cukaiQuery;
+      if (!cErr) setPendingCukaiCount(cCount || 0);
+
+      // Query pending outgoing goods requests count
+      let outgoingQuery = supabase.from('outgoing_goods').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+      if (isFactoryScoped && factoryId) {
+        outgoingQuery = outgoingQuery.eq('factory_id', factoryId);
+      }
+      const { count: oCount, error: oErr } = await outgoingQuery;
+      if (!oErr) setPendingOutgoingCount(oCount || 0);
+    } catch (err) {
+      console.error("Error fetching pending counts:", err);
+    }
+  }, [ready, isFactoryScoped, factoryId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    fetchPendingCounts();
+
+    // Subscribe to changes on cukai_requests and outgoing_goods
+    const channel = supabase
+      .channel('sidebar-badges-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cukai_requests' }, () => {
+        fetchPendingCounts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'outgoing_goods' }, () => {
+        fetchPendingCounts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [ready, fetchPendingCounts]);
+
+  const navSections = getNavSections(isFactoryScoped, pendingCukaiCount, pendingOutgoingCount);
 
   return (
     <>
@@ -114,14 +158,14 @@ const Sidebar = () => {
                           {item.icon}
                         </span>
                         {!collapsed && <span className="flex-1">{item.label}</span>}
-                        {!collapsed && item.badge === 'notif' && unreadCount > 0 && (
+                        {!collapsed && item.badgeCount > 0 && (
                           <span className="min-w-[20px] h-[20px] px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                            {unreadCount > 99 ? '99+' : unreadCount}
+                            {item.badgeCount > 99 ? '99+' : item.badgeCount}
                           </span>
                         )}
-                        {collapsed && item.badge === 'notif' && unreadCount > 0 && (
+                        {collapsed && item.badgeCount > 0 && (
                           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
-                            {unreadCount > 9 ? '9+' : unreadCount}
+                            {item.badgeCount > 9 ? '9+' : item.badgeCount}
                           </span>
                         )}
                       </>

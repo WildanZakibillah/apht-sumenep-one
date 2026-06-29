@@ -1,8 +1,6 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Manages notification state: fetching, realtime updates, unread count.
 class NotificationProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = false;
@@ -13,20 +11,17 @@ class NotificationProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   int get unreadCount => _notifications.where((n) => !(n['is_read'] as bool? ?? false)).length;
 
-  /// Initialize with user ID and start listening
   void init(String userId) {
     if (_userId == userId) return;
     _userId = userId;
+    _subscribe();
     fetchNotifications();
-    _subscribeRealtime();
   }
 
-  /// Clear state on logout
   void clear() {
+    _unsubscribe();
     _userId = null;
     _notifications = [];
-    _channel?.unsubscribe();
-    _channel = null;
     notifyListeners();
   }
 
@@ -40,26 +35,25 @@ class NotificationProvider extends ChangeNotifier {
           .from('notifications')
           .select()
           .eq('user_id', _userId!)
-          .order('created_at', ascending: false)
-          .limit(50);
+          .order('created_at', ascending: false);
 
       _notifications = List<Map<String, dynamic>>.from(res);
     } catch (e) {
       debugPrint('NotificationProvider: fetch error: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
-  void _subscribeRealtime() {
-    _channel?.unsubscribe();
+  void _subscribe() {
     if (_userId == null) return;
+    _unsubscribe();
 
     _channel = Supabase.instance.client
-        .channel('notifications_$_userId')
+        .channel('public:notifications:user_$_userId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'notifications',
           filter: PostgresChangeFilter(
@@ -68,97 +62,75 @@ class NotificationProvider extends ChangeNotifier {
             value: _userId!,
           ),
           callback: (payload) {
-            _notifications.insert(0, Map<String, dynamic>.from(payload.newRecord));
-            notifyListeners();
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: _userId!,
-          ),
-          callback: (payload) {
-            final updated = Map<String, dynamic>.from(payload.newRecord);
-            final idx = _notifications.indexWhere((n) => n['id'] == updated['id']);
-            if (idx != -1) {
-              _notifications[idx] = updated;
-              notifyListeners();
+            if (payload.eventType == PostgresChangeEvent.insert) {
+              _notifications.insert(0, Map<String, dynamic>.from(payload.newRecord));
+            } else if (payload.eventType == PostgresChangeEvent.update) {
+              final idx = _notifications.indexWhere((n) => n['id'] == payload.newRecord['id']);
+              if (idx != -1) {
+                _notifications[idx] = Map<String, dynamic>.from(payload.newRecord);
+              }
+            } else if (payload.eventType == PostgresChangeEvent.delete) {
+              _notifications.removeWhere((n) => n['id'] == payload.oldRecord['id']);
             }
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: _userId!,
-          ),
-          callback: (payload) {
-            final oldId = payload.oldRecord['id'];
-            _notifications.removeWhere((n) => n['id'] == oldId);
             notifyListeners();
           },
-        )
-        .subscribe();
+        );
+    _channel?.subscribe();
+  }
+
+  void _unsubscribe() {
+    if (_channel != null) {
+      Supabase.instance.client.removeChannel(_channel!);
+      _channel = null;
+    }
   }
 
   Future<void> markAsRead(String id) async {
-    // Optimistic update
-    final idx = _notifications.indexWhere((n) => n['id'] == id);
-    if (idx != -1) {
-      _notifications[idx] = {..._notifications[idx], 'is_read': true};
-      notifyListeners();
+    try {
+      final idx = _notifications.indexWhere((n) => n['id'] == id);
+      if (idx != -1) {
+        _notifications[idx]['is_read'] = true;
+        notifyListeners();
+      }
+      await Supabase.instance.client
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('NotificationProvider: markAsRead error: $e');
     }
-
-    await Supabase.instance.client
-        .from('notifications')
-        .update({'is_read': true})
-        .eq('id', id);
-  }
-
-  Future<void> markAllAsRead() async {
-    if (_userId == null) return;
-
-    // Optimistic update
-    _notifications = _notifications.map((n) => {...n, 'is_read': true}).toList();
-    notifyListeners();
-
-    await Supabase.instance.client
-        .from('notifications')
-        .update({'is_read': true})
-        .eq('user_id', _userId!)
-        .eq('is_read', false);
   }
 
   Future<void> deleteNotification(String id) async {
-    _notifications.removeWhere((n) => n['id'] == id);
-    notifyListeners();
-
-    await Supabase.instance.client
-        .from('notifications')
-        .delete()
-        .eq('id', id);
+    try {
+      _notifications.removeWhere((n) => n['id'] == id);
+      notifyListeners();
+      await Supabase.instance.client
+          .from('notifications')
+          .delete()
+          .eq('id', id);
+    } catch (e) {
+      debugPrint('NotificationProvider: deleteNotification error: $e');
+    }
   }
 
   Future<void> deleteMultiple(List<String> ids) async {
-    _notifications.removeWhere((n) => ids.contains(n['id']));
-    notifyListeners();
-
-    await Supabase.instance.client
-        .from('notifications')
-        .delete()
-        .inFilter('id', ids);
+    if (ids.isEmpty) return;
+    try {
+      _notifications.removeWhere((n) => ids.contains(n['id']));
+      notifyListeners();
+      await Supabase.instance.client
+          .from('notifications')
+          .delete()
+          .inFilter('id', ids);
+    } catch (e) {
+      debugPrint('NotificationProvider: deleteMultiple error: $e');
+    }
   }
 
   @override
   void dispose() {
-    _channel?.unsubscribe();
+    _unsubscribe();
     super.dispose();
   }
 }

@@ -21,25 +21,31 @@ class _ProductionEntry {
   String variant = '';
   String exciseRate = '';
   String stock = '';
-  late final TextEditingController jumlahKemasanController;
+  String packsPerSlop = '10';
+  String slopsPerCarton = '20';
+  late final TextEditingController jumlahBatangController;
 
   _ProductionEntry({VoidCallback? onChanged}) {
-    jumlahKemasanController = TextEditingController();
+    jumlahBatangController = TextEditingController();
     if (onChanged != null) {
-      jumlahKemasanController.addListener(onChanged);
+      jumlahBatangController.addListener(onChanged);
     }
   }
 
-  String get jumlahKemasan => jumlahKemasanController.text;
+  String get jumlahBatang => jumlahBatangController.text;
 
   int get jumlahIsi {
-    final isiVal = int.tryParse(isi) ?? 0;
-    final kemasanVal = int.tryParse(jumlahKemasan) ?? 0;
-    return isiVal * kemasanVal;
+    return int.tryParse(jumlahBatang) ?? 0;
+  }
+
+  String get jumlahKemasan {
+    final isiVal = int.tryParse(isi) ?? 12;
+    if (isiVal == 0) return '0';
+    return (jumlahIsi ~/ isiVal).toString();
   }
 
   void dispose() {
-    jumlahKemasanController.dispose();
+    jumlahBatangController.dispose();
   }
 }
 
@@ -98,7 +104,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     try {
       final res = await Supabase.instance.client
           .from(AppConstants.tableProducts)
-          .select('id, hje, sticks_per_pack, product_name, product_code, variant, satuan, bahan_kemasan, excise_rate, stock, brands(name, status), product_types(category)')
+          .select('id, hje, sticks_per_pack, product_name, product_code, variant, satuan, bahan_kemasan, excise_rate, stock, brands(name, status), cukai_categories(jenis_ht)')
           .eq('factory_id', factoryId);
 
       if (mounted) {
@@ -151,13 +157,33 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     // Validate
     for (int i = 0; i < _entries.length; i++) {
       final e = _entries[i];
-      if (e.productId == null || e.jumlahKemasan.isEmpty) {
+      if (e.productId == null || e.jumlahBatang.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lengkapi data pada baris ${i + 1}'), backgroundColor: AppTheme.error),
         );
         return;
       }
     }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Penyimpanan', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Apakah Anda yakin ingin menyimpan data produksi harian ini?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
     try {
@@ -342,13 +368,15 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     setState(() {
       entry.productId = productId;
       entry.merek = p['brands']?['name'] ?? '';
-      entry.jenis = p['product_types']?['category'] ?? '';
+      entry.jenis = p['cukai_categories']?['jenis_ht'] ?? '';
       
       final rawHje = p['hje'] ?? 0;
       entry.hje = NumberFormat('#,###').format(rawHje);
       
       entry.bahanKemasan = p['bahan_kemasan'] ?? '';
       entry.isi = (p['sticks_per_pack'] ?? 12).toString();
+      entry.packsPerSlop = (p['packs_per_slop'] ?? 10).toString();
+      entry.slopsPerCarton = (p['slops_per_carton'] ?? 20).toString();
       entry.satuan = p['satuan'] ?? 'btg';
 
       entry.productName = p['product_name'] ?? '';
@@ -412,7 +440,7 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
                   const SizedBox(height: 16),
                   _buildEditableQuantityField(isDark: isDark, entry: entry),
                   const SizedBox(height: 16),
-                  _buildComputedField(isDark: isDark, label: 'Jumlah Isi (Isi × Jml Kemasan)', value: NumberFormat('#,###').format(entry.jumlahIsi)),
+                  _buildComputedField(isDark: isDark, entry: entry),
                 ] else ...[
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 24),
@@ -519,8 +547,13 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Stok Tersedia', value: '${entry.stock} pak')),
               Expanded(child: _buildDetailItem(isDark: isDark, label: 'Bahan Kemasan', value: entry.bahanKemasan.isEmpty ? '-' : entry.bahanKemasan)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildDetailItem(isDark: isDark, label: 'Stok Tersedia', value: _formatStock(entry.stock, entry.packsPerSlop, entry.slopsPerCarton))),
             ],
           ),
         ],
@@ -546,14 +579,14 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Jml Kemasan', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text('Jumlah Batang (btg)', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         TextFormField(
-          controller: entry.jumlahKemasanController,
+          controller: entry.jumlahBatangController,
           keyboardType: TextInputType.number,
           style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
-            hintText: 'Masukkan jml kemasan',
+            hintText: 'Masukkan jumlah batang',
             hintStyle: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline),
             filled: true, fillColor: fillColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -566,26 +599,99 @@ class _ProductionFormScreenState extends State<ProductionFormScreen> {
     );
   }
 
-  Widget _buildComputedField({required bool isDark, required String label, required String value}) {
+  String _formatStock(String stockText, String packsPerSlopText, String slopsPerCartonText) {
+    final stockPacks = int.tryParse(stockText.replaceAll(',', '').replaceAll('.', '')) ?? 0;
+    if (stockPacks <= 0) return '0 kemasan';
+    
+    final packsPerSlop = int.tryParse(packsPerSlopText) ?? 10;
+    final slopsPerCarton = int.tryParse(slopsPerCartonText) ?? 20;
+    final packsPerCarton = packsPerSlop * slopsPerCarton;
+
+    final cartons = stockPacks ~/ packsPerCarton;
+    final remPacks = stockPacks % packsPerCarton;
+    final slops = remPacks ~/ packsPerSlop;
+    final packs = remPacks % packsPerSlop;
+
+    final parts = <String>[];
+    if (cartons > 0) parts.add('$cartons krt');
+    if (slops > 0) parts.add('$slops slp');
+    if (packs > 0) parts.add('$packs bks');
+    
+    final breakdown = parts.join(' + ');
+    return '${NumberFormat('#,###').format(stockPacks)} kemasan ($breakdown)';
+  }
+
+  Widget _buildComputedField({required bool isDark, required _ProductionEntry entry}) {
+    final totalSticks = entry.jumlahIsi;
+    final sticksPerPack = int.tryParse(entry.isi) ?? 12;
+    final packsPerSlop = int.tryParse(entry.packsPerSlop) ?? 10;
+    final slopsPerCarton = int.tryParse(entry.slopsPerCarton) ?? 20;
+
+    final totalPacks = totalSticks ~/ sticksPerPack;
+    final totalSlops = totalPacks ~/ packsPerSlop;
+
+    final sticksPerSlop = sticksPerPack * packsPerSlop;
+    final sticksPerCarton = sticksPerSlop * slopsPerCarton;
+
+    int remaining = totalSticks;
+    final cartons = remaining ~/ sticksPerCarton;
+    remaining %= sticksPerCarton;
+    final slops = remaining ~/ sticksPerSlop;
+    remaining %= sticksPerSlop;
+    final packs = remaining ~/ sticksPerPack;
+    final batang = remaining % sticksPerPack;
+
+    final breakdownParts = <String>[];
+    if (cartons > 0) breakdownParts.add('$cartons karton');
+    if (slops > 0) breakdownParts.add('$slops slop');
+    if (packs > 0) breakdownParts.add('$packs kemasan');
+    if (batang > 0) breakdownParts.add('$batang btg');
+    final breakdownStr = breakdownParts.isEmpty ? '0 kemasan' : breakdownParts.join(' + ');
+
+    final formatter = NumberFormat('#,###');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w700)),
+        Text('Hasil Konversi Satuan', style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppTheme.primaryFixed.withValues(alpha: 0.35),
+            color: AppTheme.primaryFixed.withValues(alpha: 0.25),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
             children: [
-              Text(value, style: TextStyle(color: AppTheme.primary, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-              Text('btg', style: TextStyle(color: AppTheme.primary.withValues(alpha: 0.6), fontSize: 14, fontWeight: FontWeight.w600)),
+              _buildConversionRow(label: 'Total Kemasan', value: '${formatter.format(totalPacks)} kemasan (pack)'),
+              const Divider(height: 16, color: Colors.white24),
+              _buildConversionRow(label: 'Total Slop', value: '${formatter.format(totalSlops)} slop'),
+              const Divider(height: 16, color: Colors.white24),
+              _buildConversionRow(label: 'Kemasan Jadi', value: breakdownStr, isHighlight: true),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConversionRow({required String label, required String value, bool isHighlight = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: isHighlight ? 15 : 13,
+              fontWeight: isHighlight ? FontWeight.bold : FontWeight.w600,
+              color: isHighlight ? AppTheme.primary : null,
+            ),
           ),
         ),
       ],

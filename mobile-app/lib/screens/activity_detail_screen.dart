@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../core/theme.dart';
 import '../services/p3c_pdf_service.dart';
+import '../services/receipt_pdf_service.dart';
 
 class ActivityDetailScreen extends StatelessWidget {
   final String title;
@@ -83,6 +84,12 @@ class ActivityDetailScreen extends StatelessWidget {
       return;
     }
 
+    // Check if this is Outgoing Goods - use Receipt PDF format
+    if (status.toLowerCase() == 'keluar') {
+      await _shareReceipt(context);
+      return;
+    }
+
     final pdfBytes = await _generateDetailPdf();
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/detail_${DateTime.now().millisecondsSinceEpoch}.pdf');
@@ -90,6 +97,28 @@ class ActivityDetailScreen extends StatelessWidget {
     await Share.shareXFiles(
       [XFile(file.path)],
       text: '$title - $amount',
+    );
+  }
+
+  Future<void> _shareReceipt(BuildContext context) async {
+    final pdfBytes = await ReceiptPdfService.generate(
+      title: title,
+      transactionDate: details['Tanggal'] ?? date,
+      customerName: details['Pelanggan'] ?? '-',
+      productMerek: details['Produk / Merek'] ?? title,
+      volume: details['Volume'] ?? amount,
+      totalValue: details['Total Nilai'] ?? amount,
+      paymentMethod: details['Pembayaran'] ?? '-',
+      hje: details['HJE'] ?? '-',
+      exciseRate: details['Tarif Cukai'] ?? '-',
+      factoryName: details['Nama Pabrik'] ?? 'APHT Sumenep One',
+      status: details['Status'] ?? 'PENDING',
+    );
+
+    await ReceiptPdfService.sharePdf(
+      pdfBytes,
+      'Struk_Penjualan_${details['Pelanggan']?.replaceAll(' ', '_') ?? 'transaksi'}.pdf',
+      text: 'Struk Penjualan - ${details['Pelanggan'] ?? ''}',
     );
   }
 

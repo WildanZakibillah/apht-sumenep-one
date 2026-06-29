@@ -1,7 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider } from './hooks/useAuth';
-import { NotificationsProvider } from './hooks/useNotifications';
 import { ToastProvider } from './hooks/useToast';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/shared/ProtectedRoute';
@@ -14,19 +13,17 @@ function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <NotificationsProvider>
-            <AppProvider>
-              <Router>
-                <Routes>
-                  <Route path="/" element={<SplashScreen />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route element={<ProtectedRoute />}>
-                    <Route path="/dashboard/*" element={<Dashboard />} />
-                  </Route>
-                </Routes>
-              </Router>
-            </AppProvider>
-          </NotificationsProvider>
+          <AppProvider>
+            <Router>
+              <Routes>
+                <Route path="/" element={<SplashScreen />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/dashboard/*" element={<Dashboard />} />
+                </Route>
+              </Routes>
+            </Router>
+          </AppProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

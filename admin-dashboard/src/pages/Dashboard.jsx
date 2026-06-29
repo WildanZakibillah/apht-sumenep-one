@@ -11,7 +11,6 @@ import DataPemasaran from './DataPemasaran';
 import DataMaster from './DataMaster';
 import DataStok from './DataStok';
 import ManajemenUser from './ManajemenUser';
-import Notifikasi from './Notifikasi';
 import PengaturanAkun from './PengaturanAkun';
 
 const Dashboard = () => {
@@ -29,7 +28,6 @@ const Dashboard = () => {
         <Route path="/data-stok" element={<DataStok />} />
         <Route path="/data-master" element={<DataMaster />} />
         {!isFactoryScoped && <Route path="/manajemen-pengguna" element={<ManajemenUser />} />}
-        <Route path="/notifikasi" element={<Notifikasi />} />
         <Route path="/settings" element={<PengaturanAkun />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -24,7 +24,7 @@ const PengajuanCukai = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const { data, error } = await scopeQuery(supabase.from('cukai_requests').select('*, factories(name, code)').order('created_at', { ascending: false }));
+    const { data, error } = await scopeQuery(supabase.from('cukai_requests').select('*, factories(name, nppbkc), cigarettes(product_name, variant, brands(name))').order('created_at', { ascending: false }));
     if (error) toast.error('Gagal memuat: ' + error.message);
     else if (data) setRequests(data);
     setLoading(false);
@@ -129,6 +129,7 @@ const PengajuanCukai = () => {
             <thead><tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
               <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">No. Dokumen</th>
               {!isFactoryScoped && <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>}
+              <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Produk</th>
               <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Jenis</th>
               <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Jumlah</th>
               <th className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase">Status</th>
@@ -136,11 +137,14 @@ const PengajuanCukai = () => {
             </tr></thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredRequests.length === 0 ? (
-                <tr><td colSpan="6" className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">Tidak ada pengajuan</td></tr>
+                <tr><td colSpan={isFactoryScoped ? 6 : 7} className="px-5 py-12 text-center text-gray-400 dark:text-gray-500 text-sm">Tidak ada pengajuan</td></tr>
               ) : filteredRequests.map((req) => (
                 <tr key={req.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                   <td className="px-5 py-3.5 text-sm font-mono text-gray-600 dark:text-gray-400">{req.doc_number || '-'}</td>
                   {!isFactoryScoped && <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 dark:text-white">{req.factories?.name || '-'}</td>}
+                  <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">
+                    {req.cigarettes ? `${req.cigarettes.product_name} (${req.cigarettes.brands?.name || ''})` : '-'}
+                  </td>
                   <td className="px-5 py-3.5"><span className="text-xs font-semibold px-2 py-1 rounded bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400">{req.jenis_pengajuan}</span></td>
                   <td className="px-5 py-3.5 text-sm text-gray-700 dark:text-gray-300 font-medium">{req.jumlah_lembar?.toLocaleString() || '-'}</td>
                   <td className="px-5 py-3.5">{getStatusBadge(req.status)}</td>
@@ -188,13 +192,17 @@ const PengajuanCukai = () => {
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Pabrik</p><p className="font-semibold text-gray-900 dark:text-white">{viewing.factories?.name}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Tanggal</p><p className="text-gray-700 dark:text-gray-300">{viewing.request_date}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Jenis Pengajuan</p><p className="text-gray-700 dark:text-gray-300">{viewing.jenis_pengajuan}</p></div>
-              <div><p className="text-xs text-gray-500 dark:text-gray-400">Jenis Hasil Tembakau</p><p className="text-gray-700 dark:text-gray-300">{viewing.jenis_hasil_tembakau}</p></div>
+              <div><p className="text-xs text-gray-500 dark:text-gray-400">Produk Rokok</p><p className="font-semibold text-gray-900 dark:text-white">{viewing.cigarettes ? `${viewing.cigarettes.product_name} (${viewing.cigarettes.brands?.name || ''})` : '-'}</p></div>
+              <div><p className="text-xs text-gray-500 dark:text-gray-400">Golongan Hasil Tembakau</p><p className="text-gray-700 dark:text-gray-300">{viewing.jenis_hasil_tembakau}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Lokasi</p><p className="text-gray-700 dark:text-gray-300">{viewing.lokasi_penyediaan}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Seri / Warna</p><p className="text-gray-700 dark:text-gray-300">{viewing.seri || '-'} / {viewing.warna || '-'}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Tarif Cukai</p><p className="text-gray-700 dark:text-gray-300">Rp {Number(viewing.tarif_cukai || 0).toLocaleString('id-ID')}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">HJE</p><p className="text-gray-700 dark:text-gray-300">Rp {Number(viewing.hje || 0).toLocaleString('id-ID')}</p></div>
               <div><p className="text-xs text-gray-500 dark:text-gray-400">Isi per Bks</p><p className="text-gray-700 dark:text-gray-300">{viewing.isi_per_bks || '-'}</p></div>
-              <div><p className="text-xs text-gray-500 dark:text-gray-400">Jumlah Lembar</p><p className="font-bold text-gray-900 dark:text-white">{viewing.jumlah_lembar?.toLocaleString() || '-'}</p></div>
+              <div><p className="text-xs text-gray-500 dark:text-gray-400">Jumlah Awal Lembar</p><p className="font-bold text-gray-900 dark:text-white">{viewing.jumlah_lembar?.toLocaleString() || '-'}</p></div>
+              {viewing.status === 'approved' && (
+                <div><p className="text-xs text-gray-500 dark:text-gray-400">Sisa Lembar (Stok Pita)</p><p className="font-bold text-emerald-600 dark:text-emerald-400">{(viewing.quantity_remaining ?? viewing.jumlah_lembar)?.toLocaleString() || '0'} lembar</p></div>
+              )}
             </div>
             {!isFactoryScoped && viewing.status === 'pending' && (
               <div className="flex gap-2 pt-4 border-t border-gray-100 dark:border-gray-800">

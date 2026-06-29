@@ -209,7 +209,7 @@ class P3cPdfService {
         4: const pw.FixedColumnWidth(45),   // Warna
         5: const pw.FixedColumnWidth(60),   // Tarif Cukai
         6: const pw.FixedColumnWidth(55),   // HJE (Rp)
-        7: const pw.FixedColumnWidth(55),   // Isi/Bungkus
+        7: const pw.FixedColumnWidth(55),   // Isi/Kemasan
         8: const pw.FixedColumnWidth(60),   // Peruntukan
         9: const pw.FixedColumnWidth(65),   // Jml Pesanan
         10: const pw.FixedColumnWidth(65),  // Keterangan
@@ -247,7 +247,7 @@ class P3cPdfService {
             _headerCell('Warna', headerStyle),
             _headerCell('Tarif Cukai', headerStyle),
             _headerCell('HJE (Rp)', headerStyle),
-            _headerCell('Isi/Bungkus', headerStyle),
+            _headerCell('Isi/Kemasan', headerStyle),
             _headerCell('Peruntukan', headerStyle),
             _headerCell('Jml Pesanan\n(Lembar)', headerStyle),
             _headerCell('Keterangan', headerStyle),

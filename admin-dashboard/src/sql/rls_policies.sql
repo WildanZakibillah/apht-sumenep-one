@@ -292,29 +292,7 @@ CREATE POLICY "cigarettes_update" ON public.cigarettes
 CREATE POLICY "cigarettes_delete" ON public.cigarettes
   FOR DELETE USING (get_my_role() = 'super_admin');
 
--- ============================================================
--- 10. PRODUCT_TYPES (Data Master - Global Read)
--- ============================================================
-ALTER TABLE public.product_types ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "product_types_select" ON public.product_types;
-DROP POLICY IF EXISTS "product_types_insert" ON public.product_types;
-DROP POLICY IF EXISTS "product_types_update" ON public.product_types;
-DROP POLICY IF EXISTS "product_types_delete" ON public.product_types;
-
--- Semua authenticated user bisa baca product_types
-CREATE POLICY "product_types_select" ON public.product_types
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
--- Hanya super admin yang bisa CRUD
-CREATE POLICY "product_types_insert" ON public.product_types
-  FOR INSERT WITH CHECK (get_my_role() = 'super_admin');
-
-CREATE POLICY "product_types_update" ON public.product_types
-  FOR UPDATE USING (get_my_role() = 'super_admin');
-
-CREATE POLICY "product_types_delete" ON public.product_types
-  FOR DELETE USING (get_my_role() = 'super_admin');
 
 -- ============================================================
 -- 11. HJE_RATES (Data Master - Global Read)

@@ -15,7 +15,6 @@ class AppConstants {
   static const String tableProfiles = 'profiles';
   static const String tableFactories = 'factories';
   static const String tableWarehouses = 'warehouses';
-  static const String tableProductTypes = 'product_types';
   static const String tableBrands = 'brands';
   static const String tableProducts = 'cigarettes';
   static const String tableProductions = 'productions';
@@ -23,11 +22,9 @@ class AppConstants {
   static const String tableCukaiUsageLog = 'cukai_usage_log';
   static const String tableCukaiRequests = 'cukai_requests';
   static const String tableOutgoingGoods = 'outgoing_goods';
-  static const String tableReports = 'reports';
   static const String tableNotifications = 'notifications';
   static const String tableRegions = 'regions';
   static const String tableDistributors = 'distributors';
-  static const String tableArchives = 'archives';
 
   // ---------- Role Display Names ----------
   static String roleDisplayName(String role) {

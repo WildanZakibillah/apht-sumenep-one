@@ -162,7 +162,7 @@ class _HistoryViewState extends State<HistoryView> {
     try {
       final outgoing = await client
           .from('outgoing_goods')
-          .select('*, cigarettes(*, brands(*))')
+          .select('*, cigarettes(*, brands(*)), factories(name)')
           .eq('factory_id', factoryId)
           .gte('created_at', startDate)
           .lt('created_at', endDate)
@@ -174,11 +174,18 @@ class _HistoryViewState extends State<HistoryView> {
         final cig = o['cigarettes'] as Map<String, dynamic>?;
         final productName = cig?['product_name'] ?? '-';
         final brandName = cig?['brands']?['name'] ?? '-';
+        final sticksPerPack = cig?['sticks_per_pack'] ?? 12;
+        final packsPerSlop = cig?['packs_per_slop'] ?? 10;
+        final slopsPerCarton = cig?['slops_per_carton'] ?? 20;
+        final formattedBreakdown = _formatVolumeBreakdown(o['volume'] ?? 0, sticksPerPack, packsPerSlop, slopsPerCarton);
+        final factory = o['factories'] as Map<String, dynamic>?;
+        final factoryName = factory?['name'] ?? '-';
+        final statusVal = o['status'] == 'approved' ? 'DISETUJUI' : o['status'] == 'rejected' ? 'DITOLAK' : 'PENDING';
 
         items.add(_HistoryItem(
           title: 'Keluar → ${o['customer_name']} • $productName ($brandName)',
           date: _formatDate(o['created_at']),
-          value: '${NumberFormat('#,###').format(o['volume'])} btg',
+          value: formattedBreakdown,
           valueColor: AppTheme.error,
           statusText: 'Keluar',
           icon: Icons.shopping_cart_checkout_outlined,
@@ -189,11 +196,13 @@ class _HistoryViewState extends State<HistoryView> {
             'Pelanggan': o['customer_name'] ?? '-',
             'Produk / Merek': '$productName ($brandName)',
             'Jenis Rokok': cig?['cigarette_type'] ?? '-',
-            'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
+            'Volume': '$formattedBreakdown (${NumberFormat('#,###').format(o['volume'])} btg)',
             'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
             'Pembayaran': (o['payment_method'] as String?)?.toUpperCase() ?? '-',
             if (cig?['hje'] != null) 'HJE': 'Rp ${NumberFormat('#,###').format(cig!['hje'])}',
             if (cig?['excise_rate'] != null) 'Tarif Cukai': 'Rp ${NumberFormat('#,###').format(cig!['excise_rate'])}/btg',
+            'Nama Pabrik': factoryName,
+            'Status': statusVal,
           },
         ));
       }
@@ -203,7 +212,7 @@ class _HistoryViewState extends State<HistoryView> {
     try {
       final requests = await client
           .from('cukai_requests')
-          .select('*, factories(name, code, address)')
+          .select('*, factories(name, nppbkc, address)')
           .eq('factory_id', factoryId)
           .gte('created_at', startDate)
           .lt('created_at', endDate)
@@ -243,7 +252,7 @@ class _HistoryViewState extends State<HistoryView> {
             'Status': statusLabel,
             'Nama Pabrik': factory?['name'] ?? '-',
             'Alamat Pabrik': factory?['address'] ?? '-',
-            'NPPBKC': factory?['code'] ?? '-',
+            'NPPBKC': factory?['nppbkc'] ?? '-',
             'Nama Pengusaha': auth.profile?.fullName ?? '-',
           },
         ));
@@ -499,4 +508,39 @@ class _HistoryViewState extends State<HistoryView> {
       ),
     );
   }
+}
+
+String _formatVolumeBreakdown(int totalSticks, int sticksPerPack, int packsPerSlop, int slopsPerCarton) {
+  final sticksPerSlop = sticksPerPack * packsPerSlop;
+  final sticksPerCarton = sticksPerSlop * slopsPerCarton;
+  
+  if (totalSticks <= 0) return '0 btg';
+  
+  final cartons = totalSticks ~/ sticksPerCarton;
+  final remainingSticksAfterCartons = totalSticks % sticksPerCarton;
+  
+  final slops = remainingSticksAfterCartons ~/ sticksPerSlop;
+  final remainingSticksAfterSlops = remainingSticksAfterCartons % sticksPerSlop;
+  
+  final packs = remainingSticksAfterSlops ~/ sticksPerPack;
+  final batang = remainingSticksAfterSlops % sticksPerPack;
+  
+  if (cartons > 0 && remainingSticksAfterCartons == 0) {
+    return '$cartons Karton';
+  }
+  
+  if (totalSticks % sticksPerPack == 0) {
+    final parts = <String>[];
+    if (cartons > 0) parts.add('$cartons Karton');
+    if (slops > 0) parts.add('$slops Slop');
+    if (packs > 0) parts.add('$packs Kemasan');
+    return parts.join(' + ');
+  }
+  
+  final parts = <String>[];
+  if (cartons > 0) parts.add('$cartons Karton');
+  if (slops > 0) parts.add('$slops Slop');
+  if (packs > 0) parts.add('$packs Kemasan');
+  if (batang > 0) parts.add('$batang btg');
+  return parts.join(' + ');
 }

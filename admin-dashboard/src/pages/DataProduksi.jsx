@@ -23,7 +23,7 @@ const ProdTooltip = ({ active, payload, isDark }) => {
       }}
     >
       <div className="font-bold text-[12px] mb-1.5">{d.name}</div>
-      <div className="text-[10px] opacity-60 mb-1.5">Kode: {d.code}</div>
+      <div className="text-[10px] opacity-60 mb-1.5">NPPBKC: {d.nppbkc}</div>
       <div className="flex items-center justify-between gap-3 mb-1">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -61,8 +61,8 @@ const DataProduksi = () => {
       setLoading(true);
       try {
         const [prodRes, factRes] = await Promise.all([
-          scopeQuery(supabase.from('productions').select('*, factories(name, code)').order('doc_date', { ascending: false })),
-          scopeQuery(supabase.from('factories').select('id, name, code, status').order('name'), 'id'),
+          scopeQuery(supabase.from('productions').select('*, factories(name, nppbkc)').order('doc_date', { ascending: false })),
+          scopeQuery(supabase.from('factories').select('id, name, nppbkc, status').order('name'), 'id'),
         ]);
         if (prodRes.data) setProductions(prodRes.data);
         if (factRes.data) setFactories(factRes.data);
@@ -126,14 +126,14 @@ const DataProduksi = () => {
     return Object.entries(map).map(([name, value]) => ({ name, value }));
   }, [thisMonth]);
 
-  // Production per factory (bar) - use factory CODE on axis (vertical), keep name+batang+kemasan in tooltip
+  // Production per factory (bar) - use factory NPPBKC on axis (vertical), keep name+batang+kemasan in tooltip
   const perFactory = useMemo(() => {
     const map = {};
     thisMonth.forEach((p) => {
-      const code = p.factories?.code || '-';
+      const nppbkc = p.factories?.nppbkc || '-';
       const name = p.factories?.name || 'Unknown';
-      const key = code;
-      if (!map[key]) map[key] = { code, name, kemasan: 0, batang: 0 };
+      const key = nppbkc;
+      if (!map[key]) map[key] = { nppbkc, name, kemasan: 0, batang: 0 };
       map[key].kemasan += p.jumlah_kemasan || 0;
       map[key].batang += p.jumlah_isi || 0;
     });
@@ -273,7 +273,7 @@ const DataProduksi = () => {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={perFactory} margin={{ top: 5, right: 5, left: -10, bottom: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-                  <XAxis dataKey="code" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
+                  <XAxis dataKey="nppbkc" tick={{ fontSize: 11, fill: chartColors.text }} axisLine={false} tickLine={false} interval={0} />
                   <YAxis tick={{ fontSize: 10, fill: chartColors.text }} axisLine={false} tickLine={false} tickFormatter={formatNumber} />
                   <Tooltip cursor={{ fill: isDark ? 'rgba(59,130,246,0.08)' : 'rgba(59,130,246,0.06)' }} content={(props) => <ProdTooltip {...props} isDark={isDark} />} />
                   <Bar dataKey="kemasan" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={36} />
@@ -340,7 +340,7 @@ const DataProduksi = () => {
                   const rows = q
                     ? thisMonth.filter((p) =>
                         (p.factories?.name || '').toLowerCase().includes(q) ||
-                        (p.factories?.code || '').toLowerCase().includes(q) ||
+                        (p.factories?.nppbkc || '').toLowerCase().includes(q) ||
                         (p.merek || '').toLowerCase().includes(q) ||
                         (p.jenis || '').toLowerCase().includes(q)
                       )

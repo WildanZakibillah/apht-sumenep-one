@@ -24,6 +24,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   late AnimationController _fabAnimController;
   late Animation<double> _fabRotation;
 
+  final GlobalKey<HomeViewState> _homeKey = GlobalKey<HomeViewState>();
   late final List<Widget> _views;
 
   @override
@@ -31,6 +32,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     super.initState();
     _views = [
       HomeView(
+        key: _homeKey,
         onNavigateToHistory: () {
           setState(() => _selectedIndex = 1);
         },
@@ -331,11 +333,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       accentLabel: 'PRODUKSI',
                       title: 'Produksi Baru',
                       subtitle: 'Input data barang masuk dari area produksi ke gudang.',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(sheetContext);
                         _fabAnimController.reverse();
                         setState(() => _isFabOpen = false);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductionFormScreen()));
+                        final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProductionFormScreen()));
+                        if (res == true) {
+                          _homeKey.currentState?.loadDashboardData();
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -349,11 +354,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       accentLabel: 'CUKAI',
                       title: 'Catat Cukai',
                       subtitle: 'Pindai dan catat pita cukai untuk barang siap jual.',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(sheetContext);
                         _fabAnimController.reverse();
                         setState(() => _isFabOpen = false);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const CukaiFormScreen()));
+                        final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const CukaiFormScreen()));
+                        if (res == true) {
+                          _homeKey.currentState?.loadDashboardData();
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -367,11 +375,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       accentLabel: 'PENGAJUAN',
                       title: 'Ajukan Cukai',
                       subtitle: 'Buat permohonan penyediaan pita cukai baru.',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(sheetContext);
                         _fabAnimController.reverse();
                         setState(() => _isFabOpen = false);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const PengajuanCukaiScreen()));
+                        final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const PengajuanCukaiScreen()));
+                        if (res == true) {
+                          _homeKey.currentState?.loadDashboardData();
+                        }
                       },
                     ),
                     const SizedBox(height: 10),
@@ -385,11 +396,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       accentLabel: 'KELUAR',
                       title: 'Pengeluaran Barang',
                       subtitle: 'Proses pengiriman barang keluar atau transfer antar gudang.',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(sheetContext);
                         _fabAnimController.reverse();
                         setState(() => _isFabOpen = false);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const KeluarFormScreen()));
+                        final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const KeluarFormScreen()));
+                        if (res == true) {
+                          _homeKey.currentState?.loadDashboardData();
+                        }
                       },
                     ),
                     const SizedBox(height: 20),

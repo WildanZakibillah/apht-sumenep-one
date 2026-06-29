@@ -24,6 +24,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
   final _volumeController = TextEditingController();
   final _totalValueController = TextEditingController();
 
+  String _selectedUnit = 'Karton';
   String? _selectedRegionId;
   String? _selectedProductId;
   String? _stockWarning;
@@ -31,6 +32,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
 
   List<Map<String, dynamic>> _regions = [];
   List<Map<String, dynamic>> _products = [];
+  double _computedTotalValue = 0.0;
 
   @override
   void initState() {
@@ -53,19 +55,38 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
     try {
       final product = _products.firstWhere((p) => p['id'] == _selectedProductId);
       final hje = (product['hje'] as num?)?.toDouble() ?? 0.0;
-      final volume = double.tryParse(_volumeController.text) ?? 0.0;
-      final total = volume * hje;
+      final inputQty = double.tryParse(_volumeController.text) ?? 0.0;
+      
+      final sticksPerPack = (product['sticks_per_pack'] as num?)?.toInt() ?? 12;
+      final packsPerSlop = (product['packs_per_slop'] as num?)?.toInt() ?? 10;
+      final slopsPerCarton = (product['slops_per_carton'] as num?)?.toInt() ?? 20;
+
+      final packsPerCarton = packsPerSlop * slopsPerCarton;
+      final sticksPerCarton = sticksPerPack * packsPerCarton;
+
+      double totalSticks = 0.0;
+      double totalPacks = 0.0;
+
+      if (_selectedUnit == 'Karton') {
+        totalSticks = inputQty * sticksPerCarton;
+        totalPacks = inputQty * packsPerCarton;
+      } else { // 'Kemasan'
+        totalSticks = inputQty * sticksPerPack;
+        totalPacks = inputQty;
+      }
+
+      final total = totalPacks * hje;
+      _computedTotalValue = total;
       
       final formatter = NumberFormat('#,###');
       _totalValueController.text = formatter.format(total.toInt());
 
       // Stock warning logic
       final stockPacks = (product['stock'] as num?)?.toInt() ?? 0;
-      final sticksPerPack = (product['sticks_per_pack'] as num?)?.toInt() ?? 12;
       final stockSticks = stockPacks * sticksPerPack;
-      if (volume > stockSticks) {
+      if (totalSticks > stockSticks) {
         setState(() {
-          _stockWarning = 'Peringatan: Volume (${volume.toInt()} btg) melebihi stok yang tersedia ($stockSticks btg / $stockPacks pak)!';
+          _stockWarning = 'Peringatan: Kuantitas (${formatter.format(totalSticks.toInt())} btg) melebihi stok yang tersedia (${formatter.format(stockSticks)} btg / ${formatter.format(stockPacks)} kemasan)!';
         });
       } else {
         setState(() {
@@ -74,21 +95,15 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       }
 
       // Packaging breakdown logic
-      final volumeInt = volume.toInt();
-      if (volumeInt > 0) {
-        final packsPerSlop = (product['packs_per_slop'] as num?)?.toInt() ?? 10;
-        final slopsPerCarton = (product['slops_per_carton'] as num?)?.toInt() ?? 20;
-
-        final sticksPerSlop = sticksPerPack * packsPerSlop;
-        final sticksPerCarton = sticksPerSlop * slopsPerCarton;
-
-        int remainingSticks = volumeInt;
+      final totalSticksInt = totalSticks.toInt();
+      if (totalSticksInt > 0) {
+        int remainingSticks = totalSticksInt;
 
         final cartons = remainingSticks ~/ sticksPerCarton;
         remainingSticks %= sticksPerCarton;
 
-        final slops = remainingSticks ~/ sticksPerSlop;
-        remainingSticks %= sticksPerSlop;
+        final slops = remainingSticks ~/ (sticksPerPack * packsPerSlop);
+        remainingSticks %= (sticksPerPack * packsPerSlop);
 
         final packs = remainingSticks ~/ sticksPerPack;
         remainingSticks %= sticksPerPack;
@@ -96,7 +111,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
         final parts = <String>[];
         if (cartons > 0) parts.add('$cartons Karton');
         if (slops > 0) parts.add('$slops Slop');
-        if (packs > 0) parts.add('$packs Pak');
+        if (packs > 0) parts.add('$packs Kemasan');
         if (remainingSticks > 0) parts.add('$remainingSticks Batang');
 
         setState(() {
@@ -121,7 +136,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       if (factoryId != null) {
         productsRes = await Supabase.instance.client
             .from(AppConstants.tableProducts)
-            .select('id, hje, sticks_per_pack, packs_per_slop, slops_per_carton, product_name, product_code, variant, satuan, stock, excise_rate, brands(name, status), product_types(category)')
+            .select('id, hje, sticks_per_pack, packs_per_slop, slops_per_carton, product_name, product_code, variant, satuan, stock, excise_rate, brands(name, status)')
             .eq('factory_id', factoryId);
       }
 
@@ -165,12 +180,44 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Pilih produk'), backgroundColor: AppTheme.error));
       return;
     }
-    final volume = int.tryParse(_volumeController.text) ?? 0;
-    final totalValue = double.tryParse(_totalValueController.text.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
-    if (volume <= 0) {
+    final inputQty = int.tryParse(_volumeController.text) ?? 0;
+    final totalValue = _computedTotalValue;
+    if (inputQty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Volume harus lebih dari 0'), backgroundColor: AppTheme.error));
       return;
     }
+
+    final product = _products.firstWhere((p) => p['id'] == _selectedProductId);
+    final sticksPerPack = (product['sticks_per_pack'] as num?)?.toInt() ?? 12;
+    final packsPerSlop = (product['packs_per_slop'] as num?)?.toInt() ?? 10;
+    final slopsPerCarton = (product['slops_per_carton'] as num?)?.toInt() ?? 20;
+
+    final totalSticks = _selectedUnit == 'Karton'
+        ? inputQty * sticksPerPack * packsPerSlop * slopsPerCarton
+        : inputQty * sticksPerPack;
+
+    final productName = product['product_name'] ?? '';
+    final brandName = product['brands']?['name'] ?? '';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Pengeluaran', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('Apakah Anda yakin ingin mencatat pengeluaran barang sebanyak $inputQty $_selectedUnit untuk produk $productName ($brandName)?\n\nTindakan ini akan mengurangi stok rokok jadi di gudang.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (!confirm) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
     try {
@@ -189,15 +236,16 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
         'region_id': _selectedRegionId,
         'product_id': _selectedProductId,
         'factory_id': factoryId,
-        'volume': volume,
+        'volume': totalSticks,
         'total_value': totalValue,
         'payment_method': _isTunai ? 'tunai' : 'kredit',
         'created_by': userId,
+        'status': 'pending',
       });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data barang keluar berhasil disimpan')),
+        const SnackBar(content: Text('Pengajuan barang keluar berhasil dikirim, menunggu persetujuan admin')),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -266,7 +314,58 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
           const SizedBox(height: 16),
           _buildProductDropdown(isDark),
           const SizedBox(height: 16),
-          _buildInput(isDark: isDark, label: 'Volume (Batang)', hintText: '0', controller: _volumeController, keyboardType: TextInputType.number),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                flex: 2,
+                child: _buildInput(
+                  isDark: isDark,
+                  label: 'Volume ($_selectedUnit)',
+                  hintText: '0',
+                  controller: _volumeController,
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Satuan', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _selectedUnit,
+                      isExpanded: true,
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      items: const [
+                        DropdownMenuItem(value: 'Karton', child: Text('Karton', style: TextStyle(fontSize: 13))),
+                        DropdownMenuItem(value: 'Kemasan', child: Text('Kemasan', style: TextStyle(fontSize: 13))),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() {
+                            _selectedUnit = val;
+                          });
+                          _calculateTotalValue();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 2)),
+                      ),
+                      style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           if (_packagingBreakdown != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -282,7 +381,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
             ),
           ],
           const SizedBox(height: 16),
-          _buildInput(isDark: isDark, label: 'Total Nilai (Rp)', hintText: '0', controller: _totalValueController, keyboardType: TextInputType.number),
+          _buildInput(isDark: isDark, label: 'Total Nilai (Rp)', hintText: '0', controller: _totalValueController, keyboardType: TextInputType.number, readOnly: true),
           const SizedBox(height: 20),
           _buildPaymentMethodSelector(isDark),
         ],
@@ -312,7 +411,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
     ]);
   }
 
-  Widget _buildInput({required bool isDark, required String label, String? hintText, required TextEditingController controller, TextInputType? keyboardType}) {
+  Widget _buildInput({required bool isDark, required String label, String? hintText, required TextEditingController controller, TextInputType? keyboardType, bool readOnly = false}) {
     final fillColor = isDark ? const Color(0xFF334155) : AppTheme.surfaceContainerLow.withValues(alpha: 0.5);
     final borderColor = isDark ? Colors.white.withValues(alpha: 0.1) : AppTheme.outlineVariant;
 
@@ -321,6 +420,7 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       const SizedBox(height: 6),
       TextFormField(
         controller: controller, keyboardType: keyboardType,
+        readOnly: readOnly,
         style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontSize: 14, fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           hintText: hintText, hintStyle: TextStyle(color: isDark ? Colors.white38 : AppTheme.outline),
@@ -384,9 +484,25 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
           final brandName = p['brands']?['name'] ?? 'Produk';
           final productName = p['product_name'] ?? '';
           final stock = p['stock'] ?? 0;
+          final packsPerSlop = p['packs_per_slop'] ?? 10;
+          final slopsPerCarton = p['slops_per_carton'] ?? 20;
+
+          final cartons = stock ~/ (packsPerSlop * slopsPerCarton);
+          final remPacks = stock % (packsPerSlop * slopsPerCarton);
+          final slops = remPacks ~/ packsPerSlop;
+          final packs = remPacks % packsPerSlop;
+          final breakdownParts = <String>[];
+          if (cartons > 0) breakdownParts.add('${cartons}krt');
+          if (slops > 0) breakdownParts.add('${slops}slp');
+          if (packs > 0) breakdownParts.add('${packs}bks');
+          final breakdownStr = breakdownParts.isEmpty ? '0bks' : breakdownParts.join('+');
+
           return DropdownMenuItem(
             value: p['id'] as String,
-            child: Text('$productName ($brandName) — Stok: $stock pak'),
+            child: Text(
+              '$productName ($brandName) — Stok: $stock kemasan ($breakdownStr)',
+              overflow: TextOverflow.ellipsis,
+            ),
           );
         }).toList(),
         onChanged: (v) {
@@ -407,9 +523,39 @@ class _KeluarFormScreenState extends State<KeluarFormScreen> {
       ),
       if (selectedProduct != null) ...[
         const SizedBox(height: 6),
-        Text(
-          'Stok Tersedia: ${(selectedProduct['stock'] ?? 0)} pak (${((selectedProduct['stock'] ?? 0) * (selectedProduct['sticks_per_pack'] ?? 12))} btg) | Cukai: Rp ${NumberFormat('#,###').format(selectedProduct['excise_rate'] ?? 0)}/btg',
-          style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
+        Builder(
+          builder: (context) {
+            final stock = selectedProduct!['stock'] ?? 0;
+            final sticksPerPack = selectedProduct['sticks_per_pack'] ?? 12;
+            final packsPerSlop = selectedProduct['packs_per_slop'] ?? 10;
+            final slopsPerCarton = selectedProduct['slops_per_carton'] ?? 20;
+            final totalSticks = stock * sticksPerPack;
+            
+            final cartons = stock ~/ (packsPerSlop * slopsPerCarton);
+            final remPacks = stock % (packsPerSlop * slopsPerCarton);
+            final slops = remPacks ~/ packsPerSlop;
+            final packs = remPacks % packsPerSlop;
+            final breakdownParts = <String>[];
+            if (cartons > 0) breakdownParts.add('$cartons karton');
+            if (slops > 0) breakdownParts.add('$slops slop');
+            if (packs > 0) breakdownParts.add('$packs kemasan');
+            final breakdownStr = breakdownParts.isEmpty ? '0 kemasan' : breakdownParts.join(' + ');
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Stok Tersedia: $stock kemasan ($breakdownStr)',
+                  style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Total Batang: ${NumberFormat('#,###').format(totalSticks)} btg | Tarif Cukai: Rp ${NumberFormat('#,###').format(selectedProduct['excise_rate'] ?? 0)}/btg',
+                  style: TextStyle(color: isDark ? Colors.white54 : AppTheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w500),
+                ),
+              ],
+            );
+          }
         ),
       ]
     ]);
