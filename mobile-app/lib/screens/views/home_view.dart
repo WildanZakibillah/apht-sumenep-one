@@ -24,16 +24,18 @@ class HomeView extends StatefulWidget {
 
 class HomeViewState extends State<HomeView> {
   // Dashboard stats
-  int _totalProduksi = 0;
   int _sisaCukai = 0;
   int _cukaiTerpakai = 0;
   num _totalPendapatan = 0;
   int _totalStockPacks = 0;
-  int _totalKeluar = 0;
   List<Map<String, dynamic>> _todayActivities = [];
   bool _isLoading = true;
   Map<String, dynamic>? _factoryData;
   List<Map<String, dynamic>> _allocationsRaw = [];
+  DateTime _reportMonth = DateTime.now();
+  int _reportProduksi = 0;
+  int _reportKeluar = 0;
+  int _reportSisaCukai = 0;
 
   @override
   void initState() {
@@ -63,42 +65,36 @@ class HomeViewState extends State<HomeView> {
     final startOfMonth = WIB.toDateString(DateTime(now.year, now.month, 1));
     final today = WIB.toDateString(now);
 
-    try {
-      // Total produksi bulan ini (jumlah_isi)
-      final prodRes = await client
-          .from('productions')
-          .select('jumlah_isi')
-          .eq('factory_id', factoryId)
-          .gte('doc_date', startOfMonth);
-      int totalProd = 0;
-      for (final r in prodRes) {
-        totalProd += (r['jumlah_isi'] as int?) ?? 0;
-      }
+    final currentPeriodStr = DateFormat('yyyy-MM').format(now);
+    final repPeriodStr = DateFormat('yyyy-MM').format(_reportMonth);
+    final repStart = WIB.toDateString(DateTime(_reportMonth.year, _reportMonth.month, 1));
+    final repNext = DateTime(_reportMonth.year, _reportMonth.month + 1);
+    final repEnd = WIB.toDateString(repNext);
 
-      // Sisa cukai
+    try {
+      // Sisa cukai untuk periode aktif saat ini
       final cukaiRes = await client
           .from('cukai_allocations')
           .select('*, cigarettes(*, brands(*))')
-          .eq('factory_id', factoryId);
+          .eq('factory_id', factoryId)
+          .eq('period', currentPeriodStr);
       int sisaCukai = 0;
       int usedCukai = 0;
       for (final r in cukaiRes) {
-        sisaCukai += ((r['quota'] as int) - (r['used'] as int) - ((r['damaged'] as int?) ?? 0));
-        usedCukai += (r['used'] as int);
+        sisaCukai += (r['current_stock'] as num?)?.toInt() ?? 0;
+        usedCukai += (r['used'] as num?)?.toInt() ?? 0;
       }
 
       // Total pendapatan (outgoing_goods total_value bulan ini)
       final outRes = await client
           .from('outgoing_goods')
-          .select('total_value, volume')
+          .select('total_value')
           .eq('factory_id', factoryId)
           .eq('status', 'approved')
           .gte('transaction_date', startOfMonth);
       num totalPendapatan = 0;
-      int totalKeluar = 0;
       for (final r in outRes) {
         totalPendapatan += (r['total_value'] as num?) ?? 0;
-        totalKeluar += (r['volume'] as int?) ?? 0;
       }
 
       // Total stok kemasan
@@ -109,6 +105,43 @@ class HomeViewState extends State<HomeView> {
       int totalStokPacks = 0;
       for (final r in cigarettesRes) {
         totalStokPacks += (r['stock'] as int?) ?? 0;
+      }
+
+      // --- STATS KHUSUS KARTU LAPORAN BULANAN (SESUAI BULAN YANG DIPILIH) ---
+      // 1. Produksi Laporan
+      final prodRepRes = await client
+          .from('productions')
+          .select('jumlah_isi')
+          .eq('factory_id', factoryId)
+          .gte('doc_date', repStart)
+          .lt('doc_date', repEnd);
+      int reportProduksi = 0;
+      for (final r in prodRepRes) {
+        reportProduksi += (r['jumlah_isi'] as int?) ?? 0;
+      }
+
+      // 2. Keluar Laporan
+      final outRepRes = await client
+          .from('outgoing_goods')
+          .select('volume')
+          .eq('factory_id', factoryId)
+          .eq('status', 'approved')
+          .gte('transaction_date', repStart)
+          .lt('transaction_date', repEnd);
+      int reportKeluar = 0;
+      for (final r in outRepRes) {
+        reportKeluar += (r['volume'] as int?) ?? 0;
+      }
+
+      // 3. Sisa Cukai Laporan
+      final allocRepRes = await client
+          .from('cukai_allocations')
+          .select('current_stock')
+          .eq('factory_id', factoryId)
+          .eq('period', repPeriodStr);
+      int reportSisaCukai = 0;
+      for (final r in allocRepRes) {
+        reportSisaCukai += (r['current_stock'] as num?)?.toInt() ?? 0;
       }
 
       // Today's activities
@@ -123,7 +156,7 @@ class HomeViewState extends State<HomeView> {
       for (final p in todayProd) {
         final hje = (p['hje'] as num?) ?? 0;
         final jumlahIsi = (p['jumlah_isi'] as int?) ?? 0;
-        final totalNilai = hje * jumlahIsi;
+        final totalNilai = hje * ((p['jumlah_kemasan'] as num?) ?? 0);
         todayActivities.add({
           'title': 'Produksi ${p['merek']} (${p['jenis']})',
           'subtitle': '+${NumberFormat('#,###').format(jumlahIsi)} ${p['satuan']}',
@@ -138,6 +171,7 @@ class HomeViewState extends State<HomeView> {
             'Merek': p['merek'] ?? '-',
             'Jenis': p['jenis'] ?? '-',
             'HJE': 'Rp ${NumberFormat('#,###').format(hje)}',
+            'Bahan Kemasan': p['bahan_kemasan'] ?? '-',
             'Isi': '${p['isi']} ${p['satuan']}',
             'Jumlah Kemasan': NumberFormat('#,###').format(p['jumlah_kemasan']),
             'Jumlah Isi': NumberFormat('#,###').format(jumlahIsi),
@@ -146,18 +180,20 @@ class HomeViewState extends State<HomeView> {
         });
       }
 
-      final todayUsage = await client
+      final todayCukai = await client
           .from('cukai_usage_log')
-          .select()
+          .select('*, cigarettes(*)')
           .eq('factory_id', factoryId)
           .gte('created_at', '${today}T00:00:00')
           .order('created_at', ascending: false);
-      for (final u in todayUsage) {
-        final used = u['used_amount'] as int;
-        final added = u['added_amount'] as int;
+      for (final u in todayCukai) {
+        final cig = u['cigarettes'] as Map<String, dynamic>?;
+        final displayProduct = cig != null ? '${cig['product_name']} (${cig['variant'] ?? ''})' : '-';
+        final used = (u['used_amount'] as num?)?.toInt() ?? 0;
+        final damaged = (u['damaged_amount'] as num?)?.toInt() ?? 0;
         todayActivities.add({
-          'title': 'Pemakaian Cukai${u['notes'] != null ? ' • ${u['notes']}' : ''}',
-          'subtitle': '-$used lembar',
+          'title': 'Pelekatan Cukai • $displayProduct',
+          'subtitle': '${NumberFormat('#,###').format(used)} lbr dipakai',
           'time': DateFormat('HH:mm').format(WIB.parse(u['created_at'])),
           'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(u['created_at'])),
           'icon': Icons.confirmation_number_outlined,
@@ -165,8 +201,9 @@ class HomeViewState extends State<HomeView> {
           'type': 'Cukai',
           'details': <String, String>{
             'Tanggal': u['usage_date'] ?? '-',
-            'Pemakaian': '$used lembar',
-            'Tambahan': '$added lembar',
+            'Produk / Merek': displayProduct,
+            'Dipakai': '${NumberFormat('#,###').format(used)} lembar',
+            'Rusak': '${NumberFormat('#,###').format(damaged)} lembar',
             'Catatan': u['notes'] ?? '-',
           },
         });
@@ -174,32 +211,38 @@ class HomeViewState extends State<HomeView> {
 
       final todayOut = await client
           .from('outgoing_goods')
-          .select()
+          .select('*, cigarettes(*, brands(*))')
           .eq('factory_id', factoryId)
-          .eq('status', 'approved')
           .gte('created_at', '${today}T00:00:00')
           .order('created_at', ascending: false);
       for (final o in todayOut) {
-        final totalValue = (o['total_value'] as num?) ?? 0;
+        final cig = o['cigarettes'] as Map<String, dynamic>?;
+        final productName = cig?['product_name'] ?? '-';
+        final brandName = cig?['brands']?['name'] ?? '-';
+        final totalValue = (o['total_value'] as num?)?.toDouble() ?? 0.0;
+        final isKredit = o['payment_method'] == 'kredit';
+        final status = o['status'] as String;
+        final statusLabel = status == 'approved' ? 'Disetujui' : status == 'rejected' ? 'Ditolak' : 'Pending';
         todayActivities.add({
           'title': 'Keluar → ${o['customer_name']}',
-          'subtitle': '${NumberFormat('#,###').format(o['volume'])} btg',
+          'subtitle': '-${NumberFormat('#,###').format(o['volume'])} btg',
           'time': DateFormat('HH:mm').format(WIB.parse(o['created_at'])),
           'date': DateFormat('dd MMM yyyy, HH:mm').format(WIB.parse(o['created_at'])),
           'icon': Icons.shopping_cart_checkout_outlined,
-          'color': const Color(0xFFEF4444),
+          'color': AppTheme.error,
           'type': 'Keluar',
           'details': <String, String>{
             'Tanggal': o['transaction_date'] ?? '-',
             'Pelanggan': o['customer_name'] ?? '-',
+            'Produk / Merek': '$productName ($brandName)',
             'Volume': '${NumberFormat('#,###').format(o['volume'])} btg',
             'Total Nilai': 'Rp ${NumberFormat('#,###').format(totalValue)}',
-            'Pembayaran': (o['payment_method'] as String?)?.toUpperCase() ?? '-',
+            'Pembayaran': isKredit ? 'KREDIT' : 'TUNAI',
+            'Status': statusLabel,
           },
         });
       }
 
-      // Fetch cukai requests today
       final todayReq = await client
           .from('cukai_requests')
           .select()
@@ -243,15 +286,16 @@ class HomeViewState extends State<HomeView> {
 
       if (mounted) {
         setState(() {
-          _totalProduksi = totalProd;
           _sisaCukai = sisaCukai;
           _cukaiTerpakai = usedCukai;
           _totalPendapatan = totalPendapatan;
           _totalStockPacks = totalStokPacks;
-          _totalKeluar = totalKeluar;
           _todayActivities = todayActivities;
           _factoryData = factoryRes;
           _allocationsRaw = List<Map<String, dynamic>>.from(cukaiRes);
+          _reportProduksi = reportProduksi;
+          _reportKeluar = reportKeluar;
+          _reportSisaCukai = reportSisaCukai;
           _isLoading = false;
         });
       }
@@ -445,7 +489,7 @@ class HomeViewState extends State<HomeView> {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Laporan Bulanan', style: TextStyle(color: isDark ? Colors.white : AppTheme.onSurface, fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 2),
-            Text('Periode ${DateFormat('MMMM yyyy').format(DateTime.now())}', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 12)),
+            Text('Periode ${DateFormat('MMMM yyyy').format(_reportMonth)}', style: TextStyle(color: isDark ? Colors.white70 : AppTheme.onSurfaceVariant, fontSize: 12)),
           ])),
           Container(
             width: 42, height: 42,
@@ -455,11 +499,11 @@ class HomeViewState extends State<HomeView> {
         ]),
         const SizedBox(height: 22),
         Row(children: [
-          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Produksi', value: NumberFormat('#,###').format(_totalProduksi), color: const Color(0xFF4F46E5))),
+          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Produksi', value: NumberFormat('#,###').format(_reportProduksi), color: const Color(0xFF4F46E5))),
           const SizedBox(width: 10),
-          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Keluar', value: NumberFormat('#,###').format(_totalKeluar), color: const Color(0xFF10B981))),
+          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Keluar', value: NumberFormat('#,###').format(_reportKeluar), color: const Color(0xFF10B981))),
           const SizedBox(width: 10),
-          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Sisa Cukai', value: NumberFormat('#,###').format(_sisaCukai), color: const Color(0xFFF59E0B))),
+          Expanded(child: _buildMiniStat(isDark: isDark, title: 'Sisa Cukai', value: NumberFormat('#,###').format(_reportSisaCukai), color: const Color(0xFFF59E0B))),
         ]),
         const SizedBox(height: 16),
         Row(children: [
@@ -500,12 +544,14 @@ class HomeViewState extends State<HomeView> {
   Future<void> _pickReportMonth() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: _reportMonth,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
     if (picked != null) {
-      // Reload data for selected month - for now just refresh
+      setState(() {
+        _reportMonth = DateTime(picked.year, picked.month);
+      });
       loadDashboardData();
     }
   }
@@ -519,7 +565,7 @@ class HomeViewState extends State<HomeView> {
   Future<void> _shareReport() async {
     final pdfBytes = await _generateReportPdf();
     if (pdfBytes == null) return;
-    final month = DateFormat('MMMM-yyyy').format(DateTime.now());
+    final month = DateFormat('MMMM-yyyy').format(_reportMonth);
     await ReportPdfService.sharePdf(pdfBytes, 'CK4_$month.pdf', text: 'Laporan CK-4 Periode $month');
   }
 
@@ -529,9 +575,8 @@ class HomeViewState extends State<HomeView> {
     if (factoryId == null) return null;
 
     final client = Supabase.instance.client;
-    final now = WIB.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0);
+    final startOfMonth = DateTime(_reportMonth.year, _reportMonth.month, 1);
+    final endOfMonth = DateTime(_reportMonth.year, _reportMonth.month + 1, 0);
 
     final productions = await client
         .from('productions')
@@ -548,15 +593,18 @@ class HomeViewState extends State<HomeView> {
         .eq('id', factoryId)
         .single();
 
+    final rawOwner = factoryRes['owner_name']?.toString() ?? '';
+    final resolvedOwner = rawOwner.trim().isNotEmpty ? rawOwner : (auth.profile?.fullName ?? '-');
+
     return ReportPdfService.generateCK4(
       productions: List<Map<String, dynamic>>.from(productions),
       factoryName: factoryRes['name'] ?? '-',
       factoryAddress: factoryRes['address'] ?? '-',
       nppbkc: factoryRes['nppbkc'] ?? '-',
-      ownerName: auth.profile?.fullName ?? '-',
+      ownerName: resolvedOwner,
       periodStart: startOfMonth,
       periodEnd: endOfMonth,
-      reportDate: now,
+      reportDate: WIB.now(),
     );
   }
 

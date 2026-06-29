@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/report_pdf_service.dart';
+import '../../services/cukai_report_pdf_service.dart';
+import '../../services/keluar_report_pdf_service.dart';
 import '../../utils/wib_helper.dart';
 import '../activity_detail_screen.dart';
 
@@ -27,8 +29,8 @@ class _LaporanViewState extends State<LaporanView> {
 
   // Actual cigarette inventory stocks
   List<Map<String, dynamic>> _cigarettes = [];
-  int _totalStockPacks = 0;
-  int _totalStockSticks = 0;
+  int _totalStockReady = 0;
+  int _totalStockUnaffixed = 0;
 
   // Cukai data
   List<Map<String, dynamic>> _cukaiUsages = [];
@@ -76,13 +78,13 @@ class _LaporanViewState extends State<LaporanView> {
           .eq('factory_id', factoryId)
           .order('product_name', ascending: true);
       
-      int totalStockPacks = 0;
-      int totalStockSticks = 0;
+      int totalStockReady = 0;
+      int totalStockUnaffixed = 0;
       for (final c in cigsRes) {
         final stock = (c['stock'] as num?)?.toInt() ?? 0;
-        final sticksPerPack = (c['sticks_per_pack'] as num?)?.toInt() ?? 12;
-        totalStockPacks += stock;
-        totalStockSticks += stock * sticksPerPack;
+        final unaffixed = (c['unaffixed_stock'] as num?)?.toInt() ?? 0;
+        totalStockReady += stock;
+        totalStockUnaffixed += unaffixed;
       }
 
       // Cukai
@@ -94,13 +96,15 @@ class _LaporanViewState extends State<LaporanView> {
           .lt('usage_date', endDate)
           .order('created_at', ascending: false);
 
+      final periodStr = DateFormat('yyyy-MM').format(_selectedMonth);
       final allocRes = await client
           .from('cukai_allocations')
-          .select('quota, used, damaged')
-          .eq('factory_id', factoryId);
+          .select('current_stock')
+          .eq('factory_id', factoryId)
+          .eq('period', periodStr);
       int sisaCukai = 0;
       for (final r in allocRes) {
-        sisaCukai += ((r['quota'] as int) - (r['used'] as int) - ((r['damaged'] as int?) ?? 0));
+        sisaCukai += (r['current_stock'] as num?)?.toInt() ?? 0;
       }
 
       // Outgoing (include cigarettes & brands details)
@@ -123,10 +127,9 @@ class _LaporanViewState extends State<LaporanView> {
           _sisaCukai = sisaCukai;
           _outgoingGoods = List<Map<String, dynamic>>.from(outRes);
           _totalKeluar = totalKeluar;
-          
           _cigarettes = List<Map<String, dynamic>>.from(cigsRes);
-          _totalStockPacks = totalStockPacks;
-          _totalStockSticks = totalStockSticks;
+          _totalStockReady = totalStockReady;
+          _totalStockUnaffixed = totalStockUnaffixed;
           
           _isLoading = false;
         });
@@ -272,29 +275,74 @@ class _LaporanViewState extends State<LaporanView> {
 
     final client = Supabase.instance.client;
     final startDate = WIB.toDateString(_selectedMonth);
-    final endMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
-    final endDate = WIB.toDateString(endMonth);
-
-    final productions = await client
-        .from('productions')
-        .select()
-        .eq('factory_id', factoryId)
-        .gte('doc_date', startDate)
-        .lte('doc_date', endDate)
-        .order('doc_date');
-
+    final nextMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    final endDate = WIB.toDateString(nextMonth);
     final factoryRes = await client.from('factories').select().eq('id', factoryId).single();
+    final rawOwner = factoryRes['owner_name']?.toString() ?? '';
+    final resolvedOwner = rawOwner.trim().isNotEmpty ? rawOwner : (auth.profile?.fullName ?? '-');
 
-    return ReportPdfService.generateCK4(
-      productions: List<Map<String, dynamic>>.from(productions),
-      factoryName: factoryRes['name'] ?? '-',
-      factoryAddress: factoryRes['address'] ?? '-',
-      nppbkc: factoryRes['nppbkc'] ?? '-',
-      ownerName: auth.profile?.fullName ?? '-',
-      periodStart: _selectedMonth,
-      periodEnd: endMonth,
-      reportDate: DateTime.now(),
-    );
+    if (_selectedTabIndex == 0) {
+      return ReportPdfService.generateStockReport(
+        cigarettes: List<Map<String, dynamic>>.from(_cigarettes),
+        factoryName: factoryRes['name'] ?? '-',
+        factoryAddress: factoryRes['address'] ?? '-',
+        nppbkc: factoryRes['nppbkc'] ?? '-',
+        ownerName: resolvedOwner,
+        period: _selectedMonth,
+      );
+    } else if (_selectedTabIndex == 1) {
+      final periodStr = DateFormat('yyyy-MM').format(_selectedMonth);
+      final allocations = await client
+          .from('cukai_allocations')
+          .select('*, cukai_categories(*)')
+          .eq('factory_id', factoryId)
+          .eq('period', periodStr);
+
+      final usages = await client
+          .from('cukai_usage_log')
+          .select('*, cigarettes(*)')
+          .eq('factory_id', factoryId)
+          .gte('usage_date', startDate)
+          .lt('usage_date', endDate)
+          .order('usage_date', ascending: true);
+
+      final requests = await client
+          .from('cukai_requests')
+          .select('*, cukai_categories(*)')
+          .eq('factory_id', factoryId)
+          .eq('status', 'approved')
+          .gte('request_date', startDate)
+          .lt('request_date', endDate)
+          .order('request_date', ascending: true);
+
+      return CukaiReportPdfService.generate(
+        allocations: List<Map<String, dynamic>>.from(allocations),
+        usages: List<Map<String, dynamic>>.from(usages),
+        requests: List<Map<String, dynamic>>.from(requests),
+        factoryName: factoryRes['name'] ?? '-',
+        factoryAddress: factoryRes['address'] ?? '-',
+        nppbkc: factoryRes['nppbkc'] ?? '-',
+        ownerName: resolvedOwner,
+        period: _selectedMonth,
+      );
+    } else {
+      final outgoing = await client
+          .from('outgoing_goods')
+          .select('*, cigarettes(*, brands(*))')
+          .eq('factory_id', factoryId)
+          .gte('transaction_date', startDate)
+          .lt('transaction_date', endDate)
+          .order('transaction_date', ascending: true);
+
+      return KeluarReportPdfService.generate(
+        outgoing: List<Map<String, dynamic>>.from(outgoing),
+        factoryName: factoryRes['name'] ?? '-',
+        factoryAddress: factoryRes['address'] ?? '-',
+        nppbkc: factoryRes['nppbkc'] ?? '-',
+        ownerName: resolvedOwner,
+        period: _selectedMonth,
+      );
+    }
   }
 
   Future<void> _downloadPdf() async {
@@ -307,7 +355,14 @@ class _LaporanViewState extends State<LaporanView> {
     final pdfBytes = await _generatePdf();
     if (pdfBytes == null) return;
     final month = DateFormat('MMMM-yyyy').format(_selectedMonth);
-    await ReportPdfService.sharePdf(pdfBytes, 'CK4_$month.pdf', text: 'Laporan CK-4 Periode $month');
+    
+    if (_selectedTabIndex == 0) {
+      await ReportPdfService.sharePdf(pdfBytes, 'CK4_$month.pdf', text: 'Laporan CK-4 Periode $month');
+    } else if (_selectedTabIndex == 1) {
+      await CukaiReportPdfService.sharePdf(pdfBytes, 'Laporan_Cukai_$month.pdf', text: 'Laporan Pita Cukai Periode $month');
+    } else {
+      await KeluarReportPdfService.sharePdf(pdfBytes, 'Laporan_Barang_Keluar_$month.pdf', text: 'Laporan Barang Keluar Periode $month');
+    }
   }
 
   Widget _buildActionButtons(bool isDark) {
@@ -553,22 +608,22 @@ class _LaporanViewState extends State<LaporanView> {
         children: [
           Expanded(
             child: _buildSmallHeroCard(
-              title: 'TOTAL STOK (KEMASAN)',
-              value: NumberFormat('#,###').format(_totalStockPacks),
-              color: AppTheme.primary,
-              bgColor: AppTheme.primary.withValues(alpha: 0.08),
-              icon: Icons.inventory_2_outlined,
+              title: 'STOK SUDAH DILEKATI (KEMASAN)',
+              value: NumberFormat('#,###').format(_totalStockReady),
+              color: const Color(0xFF10B981),
+              bgColor: const Color(0xFF10B981).withValues(alpha: 0.08),
+              icon: Icons.bookmark_added_outlined,
               isDark: isDark,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _buildSmallHeroCard(
-              title: 'TOTAL STOK (BTG)',
-              value: NumberFormat('#,###').format(_totalStockSticks),
-              color: const Color(0xFF10B981),
-              bgColor: const Color(0xFF10B981).withValues(alpha: 0.08),
-              icon: Icons.splitscreen_rounded,
+              title: 'STOK BELUM DILEKATI (KEMASAN)',
+              value: NumberFormat('#,###').format(_totalStockUnaffixed),
+              color: const Color(0xFFF59E0B),
+              bgColor: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+              icon: Icons.bookmark_border_rounded,
               isDark: isDark,
             ),
           ),
@@ -602,7 +657,7 @@ class _LaporanViewState extends State<LaporanView> {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final hje = (p['hje'] as num?) ?? 0;
     final jumlahIsi = (p['jumlah_isi'] as int?) ?? 0;
-    final totalNilai = hje * jumlahIsi;
+    final totalNilai = hje * ((p['jumlah_kemasan'] as num?) ?? 0);
 
     return Material(
       color: Colors.transparent,

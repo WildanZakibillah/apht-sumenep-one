@@ -16,8 +16,18 @@ import {
 import { useRoleAccess } from '../hooks/useRoleAccess';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
-const emptyForm = { factory_id: '', cukai_category_id: '', product_id: '', quota: 0, used: 0, damaged: 0, period: '' };
-const currentPeriod = () => { const d = new Date(); return `Q${Math.floor(d.getMonth() / 3) + 1}-${d.getFullYear()}`; };
+const emptyForm = { 
+  factory_id: '', 
+  cukai_category_id: '', 
+  product_id: '', 
+  monthly_quota: 0,
+  carry_over: 0,
+  additions: 0,
+  used: 0, 
+  damaged: 0, 
+  period: '' 
+};
+const currentPeriod = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 
 const PantauCukai = () => {
   const { isDark } = useTheme();
@@ -82,7 +92,7 @@ const PantauCukai = () => {
   const totalQuota = factoryAllocations.reduce((s, a) => s + (a.quota || 0), 0);
   const totalUsed = factoryAllocations.reduce((s, a) => s + (a.used || 0), 0);
   const totalDamaged = factoryAllocations.reduce((s, a) => s + (a.damaged || 0), 0);
-  const totalRemaining = totalQuota - totalUsed;
+  const totalRemaining = factoryAllocations.reduce((s, a) => s + (a.current_stock || 0), 0);
 
   const filteredAllocations = factoryAllocations.filter((a) => {
     const q = search.trim().toLowerCase();
@@ -92,7 +102,7 @@ const PantauCukai = () => {
 
   const getPercentage = (alloc) => {
     if (!alloc.quota) return 0;
-    return Math.round(((alloc.quota - (alloc.used || 0)) / alloc.quota) * 100);
+    return Math.round(((alloc.current_stock || 0) / alloc.quota) * 100);
   };
   const getBarColor = (percent) => percent <= 10 ? '#ef4444' : percent <= 25 ? '#f97316' : '#3b82f6';
   const formatNumber = (num) => {
@@ -106,7 +116,7 @@ const PantauCukai = () => {
     nppbkc: a.factories?.nppbkc || '-',
     name: a.factories?.name || 'Pabrik',
     used: a.used || 0,
-    remaining: (a.quota || 0) - (a.used || 0),
+    remaining: a.current_stock || 0,
     damaged: a.damaged || 0,
   }));
 
@@ -135,17 +145,39 @@ const PantauCukai = () => {
 
   // CRUD
   const openCreate = () => { setEditing(null); setForm({ ...emptyForm, period: currentPeriod() }); setShowModal(true); };
-  const openEdit = (a) => { setEditing(a); setForm({ factory_id: a.factory_id || '', cukai_category_id: a.cukai_category_id || '', product_id: a.product_id || '', quota: a.quota || 0, used: a.used || 0, damaged: a.damaged || 0, period: a.period || currentPeriod() }); setShowModal(true); };
+  const openEdit = (a) => { 
+    setEditing(a); 
+    setForm({ 
+      factory_id: a.factory_id || '', 
+      cukai_category_id: a.cukai_category_id || '', 
+      product_id: a.product_id || '', 
+      monthly_quota: a.monthly_quota || 0,
+      carry_over: a.carry_over || 0,
+      additions: a.additions || 0,
+      used: a.used || 0, 
+      damaged: a.damaged || 0, 
+      period: a.period || currentPeriod() 
+    }); 
+    setShowModal(true); 
+  };
   const handleSubmit = async (e) => {
     e?.preventDefault?.();
     if (!form.factory_id || !form.period.trim()) { toast.warning('Pabrik dan periode wajib diisi'); return; }
     setSaving(true);
     try {
+      const monthly_quota = parseInt(form.monthly_quota) || 0;
+      const carry_over = parseInt(form.carry_over) || 0;
+      const additions = parseInt(form.additions) || 0;
+      const quota = monthly_quota + carry_over + additions;
+
       const payload = { 
         factory_id: form.factory_id, 
         cukai_category_id: form.cukai_category_id || null,
         product_id: form.product_id || null,
-        quota: parseInt(form.quota) || 0, 
+        monthly_quota,
+        carry_over,
+        additions,
+        quota,
         used: parseInt(form.used) || 0, 
         damaged: parseInt(form.damaged) || 0, 
         period: form.period.trim() 
@@ -300,7 +332,7 @@ const PantauCukai = () => {
                     <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{alloc.factories?.name}</span>
                     <span className="text-xs font-bold text-red-600 dark:text-red-400">{getPercentage(alloc)}%</span>
                   </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Sisa: {formatNumber(alloc.quota - alloc.used)} dari {formatNumber(alloc.quota)}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Sisa: {formatNumber(alloc.current_stock || 0)} dari {formatNumber(alloc.quota)}</p>
                 </div>
               ))
             )}
@@ -316,25 +348,23 @@ const PantauCukai = () => {
         </div>
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
           <table className="w-full text-left">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800">
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Kategori Cukai / Jenis HT</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Periode</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Kuota</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Terpakai</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Rusak</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Sisa</th>
-                <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Status</th>
-                {!isFactoryScoped && <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>}
-              </tr>
-            </thead>
+            <tr className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-100 dark:border-gray-800">
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Pabrik</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Kategori Cukai / Jenis HT</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase">Periode</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Kuota</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Terpakai</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Rusak</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-right">Sisa</th>
+              <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Status</th>
+              {!isFactoryScoped && <th className="px-5 py-3 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase text-center">Aksi</th>}
+            </tr>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {filteredAllocations.length === 0 ? (
                 <tr><td colSpan="9" className="px-5 py-10 text-center text-gray-400 dark:text-gray-500 text-sm">{search ? 'Tidak ditemukan' : 'Belum ada alokasi'}</td></tr>
               ) : filteredAllocations.map((alloc) => {
                 const percent = getPercentage(alloc);
-                const remaining = (alloc.quota || 0) - (alloc.used || 0);
+                const remaining = alloc.current_stock || 0;
                 return (
                   <tr key={alloc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                     <td className="px-5 py-3 text-sm font-semibold text-gray-900 dark:text-white">{alloc.factories?.name || '-'}</td>
@@ -507,7 +537,7 @@ const PantauCukai = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Pabrik <span className="text-red-500">*</span></label><select value={form.factory_id} onChange={(e) => setForm({ ...form, factory_id: e.target.value, product_id: '' })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" required><option value="">Pilih pabrik...</option>{factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div>
-            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Periode <span className="text-red-500">*</span></label><input value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="Q2-2026" required /></div>
+            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Periode <span className="text-red-500">*</span></label><input value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" placeholder="YYYY-MM" required /></div>
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kategori Cukai <span className="text-red-500">*</span></label>
@@ -524,9 +554,19 @@ const PantauCukai = () => {
             </select>
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kuota</label><input type="number" min="0" value={form.quota} onChange={(e) => setForm({ ...form, quota: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
+            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Kuota Bulanan</label><input type="number" min="0" value={form.monthly_quota} onChange={(e) => setForm({ ...form, monthly_quota: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
+            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Carry-Over (Lalu)</label><input type="number" min="0" value={form.carry_over} onChange={(e) => setForm({ ...form, carry_over: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
+            <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Tambahan</label><input type="number" min="0" value={form.additions} onChange={(e) => setForm({ ...form, additions: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
             <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Terpakai</label><input type="number" min="0" value={form.used} onChange={(e) => setForm({ ...form, used: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
             <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Rusak</label><input type="number" min="0" value={form.damaged} onChange={(e) => setForm({ ...form, damaged: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-blue-400" /></div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 block">Stok Cukai (Sisa)</label>
+              <div className="w-full px-3 py-2.5 border border-gray-100 dark:border-gray-800/80 rounded-lg text-sm bg-gray-50 dark:bg-gray-800/50 text-emerald-600 dark:text-emerald-400 font-bold">
+                {((parseInt(form.monthly_quota) || 0) + (parseInt(form.carry_over) || 0) + (parseInt(form.additions) || 0) - (parseInt(form.used) || 0) - (parseInt(form.damaged) || 0)).toLocaleString()}
+              </div>
+            </div>
           </div>
         </form>
       </Modal>

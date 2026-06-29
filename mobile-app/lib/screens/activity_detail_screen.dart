@@ -138,8 +138,8 @@ class ActivityDetailScreen extends StatelessWidget {
       kodePersonalisasi: details['Kode Personalisasi'] ?? '-',
       seri: details['Seri'] ?? '-',
       warna: details['Warna'] ?? '-',
-      tarifCukai: double.tryParse((details['Tarif Cukai'] ?? '0').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0,
-      hje: double.tryParse((details['HJE'] ?? '0').replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0,
+      tarifCukai: double.tryParse((details['Tarif Cukai'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+      hje: double.tryParse((details['HJE'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
       isiPerBks: int.tryParse((details['Isi/Bks'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
       jumlahLembar: int.tryParse((details['Jumlah Lembar'] ?? '0').replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
     );

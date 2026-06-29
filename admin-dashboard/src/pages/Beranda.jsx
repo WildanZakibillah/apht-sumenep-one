@@ -178,10 +178,10 @@ const Beranda = () => {
   const totalQuota = allocations.reduce((s, a) => s + (a.quota || 0), 0);
   const totalUsed = allocations.reduce((s, a) => s + (a.used || 0), 0);
   const totalDamaged = allocations.reduce((s, a) => s + (a.damaged || 0), 0);
-  const totalRemaining = totalQuota - totalUsed;
+  const totalRemaining = allocations.reduce((s, a) => s + (a.current_stock || 0), 0);
   const totalKemasan = monthProductions.reduce((s, p) => s + (p.jumlah_kemasan || 0), 0);
   const totalRevenue = monthGoods.reduce((s, g) => s + Number(g.total_value || 0), 0);
-  const criticalFactories = allocations.filter((a) => a.quota > 0 && ((a.quota - a.used) / a.quota) <= 0.1);
+  const criticalFactories = allocations.filter((a) => a.quota > 0 && ((a.current_stock || 0) / a.quota) <= 0.1);
 
   // Production per factory — use NPPBKC on axis, keep NAME + batang + kemasan in tooltip
   const prodPerFactory = useMemo(() => {
@@ -496,7 +496,7 @@ const Beranda = () => {
               </div>
             ) : (
               criticalFactories.map((alloc) => {
-                const remaining = alloc.quota - (alloc.used || 0);
+                const remaining = alloc.current_stock || 0;
                 const percent = Math.round((remaining / alloc.quota) * 100);
                 return (
                   <div key={alloc.id} className="p-3.5 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">

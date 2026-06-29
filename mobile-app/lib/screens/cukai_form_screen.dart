@@ -52,37 +52,47 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
       if (factoryId == null) return;
 
       final now = WIB.now();
-      final period = 'Q${((now.month - 1) ~/ 3) + 1}-${now.year}';
+      final period = DateFormat('yyyy-MM').format(now);
 
-      final res = await Supabase.instance.client
-          .from('cukai_allocations')
-          .select()
-          .eq('factory_id', factoryId)
-          .eq('period', period);
-
-      final list = List<Map<String, dynamic>>.from(res);
-      if (list.isEmpty) {
-        final newAlloc = await Supabase.instance.client
-            .from('cukai_allocations')
-            .insert({
-              'factory_id': factoryId,
-              'quota': 50000,
-              'used': 0,
-              'damaged': 0,
-              'period': period,
-            })
-            .select()
-            .single();
-        _allocationList = [newAlloc];
-      } else {
-        _allocationList = list;
-      }
-
+      // Fetch products first
       final prodRes = await Supabase.instance.client
           .from('cigarettes')
           .select('*, brands(name), cukai_categories(*)')
           .eq('factory_id', factoryId);
       _products = List<Map<String, dynamic>>.from(prodRes);
+
+      // Lazy create allocation for each category if not exists
+      final Set<String> catIds = {};
+      for (final p in _products) {
+        final catId = p['cukai_category_id'] as String?;
+        if (catId != null) {
+          catIds.add(catId);
+        }
+      }
+
+      for (final catId in catIds) {
+        try {
+          await Supabase.instance.client.rpc(
+            'get_or_create_monthly_allocation',
+            params: {
+              'p_factory_id': factoryId,
+              'p_cukai_category_id': catId,
+              'p_date': WIB.toDateString(now),
+            },
+          );
+        } catch (e) {
+          debugPrint('Error lazy-creating monthly allocation: $e');
+        }
+      }
+
+      // Fetch current period allocations
+      final res = await Supabase.instance.client
+          .from('cukai_allocations')
+          .select('*, cukai_categories(*)')
+          .eq('factory_id', factoryId)
+          .eq('period', period);
+
+      _allocationList = List<Map<String, dynamic>>.from(res);
 
       // Pre-select product for the first entry
       if (_products.isNotEmpty && _entries.isNotEmpty) {
@@ -207,11 +217,11 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
         return;
       }
 
-      final remainingStamps = (alloc['quota'] as num).toInt() - (alloc['used'] as num).toInt() - ((alloc['damaged'] as num?)?.toInt() ?? 0);
+      final remainingStamps = (alloc['current_stock'] as num?)?.toInt() ?? 0;
 
       if (totalNeeded > remainingStamps) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Total pengeluaran (${NumberFormat('#,###').format(totalNeeded)} lbr) pada entri #${i + 1} melebihi sisa alokasi pita cukai (${NumberFormat('#,###').format(remainingStamps)} lbr)!'), backgroundColor: AppTheme.error),
+          SnackBar(content: Text('Total pengeluaran (${NumberFormat('#,###').format(totalNeeded)} lbr) pada entri #${i + 1} melebihi stok pita cukai (${NumberFormat('#,###').format(remainingStamps)} lbr)!'), backgroundColor: AppTheme.error),
         );
         return;
       }
@@ -269,9 +279,8 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
       final factoryId = auth.profile!.factoryId!;
       final userId = auth.profile!.id;
 
+
       final service = CukaiUsageService();
-      final client = Supabase.instance.client;
-      
       // Save all entries sequentially
       for (final entry in _entries) {
         final used = int.tryParse(entry.usedController.text) ?? 0;
@@ -281,65 +290,26 @@ class _CukaiFormScreenState extends State<CukaiFormScreen> {
 
         final product = _products.firstWhere((p) => p['id'] == entry.productId);
         final productName = product['product_name'] ?? 'Rokok';
-        final cat = product['cukai_categories'] as Map<String, dynamic>?;
-        final catId = cat != null ? cat['id'] as String? : null;
-        final isShared = cat != null ? (cat['is_shared'] ?? true) : true;
-
-        var query = client
-            .from('cukai_requests')
-            .select('id, quantity_remaining, doc_number')
-            .eq('factory_id', factoryId)
-            .eq('status', 'approved')
-            .gt('quantity_remaining', 0);
-
-        if (isShared && catId != null) {
-          query = query.eq('cukai_category_id', catId);
-        } else {
-          query = query.eq('product_id', entry.productId!);
-        }
-
-        final batchesRes = await query
-            .order('request_date', ascending: true)
-            .order('created_at', ascending: true);
-
-        final batches = List<Map<String, dynamic>>.from(batchesRes);
-        int totalAvailable = batches.fold<int>(0, (sum, b) => sum + (b['quantity_remaining'] as int));
+        
+        final alloc = _getMatchingAllocation(entry.productId!);
+        final totalAvailable = alloc != null ? (alloc['current_stock'] as num?)?.toInt() ?? 0 : 0;
 
         if (used + damaged > totalAvailable) {
           throw Exception('Stok pita cukai tidak mencukupi untuk $productName! Tersedia: ${NumberFormat('#,###').format(totalAvailable)} lembar, Diminta: ${NumberFormat('#,###').format(used + damaged)} lembar.');
         }
 
-        int remainingUsed = used;
-        int remainingDamaged = damaged;
-
-        for (final b in batches) {
-          if (remainingUsed == 0 && remainingDamaged == 0) break;
-
-          final batchId = b['id'] as String;
-          final available = b['quantity_remaining'] as int;
-
-          final deductUsed = remainingUsed < available ? remainingUsed : available;
-          final deductDamaged = remainingDamaged < (available - deductUsed) ? remainingDamaged : (available - deductUsed);
-
-          if (deductUsed > 0 || deductDamaged > 0) {
-            final alloc = _getMatchingAllocation(entry.productId!);
-            await service.insert({
-              'allocation_id': alloc?['id'],
-              'factory_id': factoryId,
-              'usage_date': WIB.toDateString(_usageDate),
-              'used_amount': deductUsed,
-              'damaged_amount': deductDamaged,
-              'added_amount': 0,
-              'product_id': entry.productId,
-              'cukai_request_id': batchId,
-              'notes': entry.notesController.text.isEmpty ? null : entry.notesController.text,
-              'created_by': userId,
-            });
-
-            remainingUsed -= deductUsed;
-            remainingDamaged -= deductDamaged;
-          }
-        }
+        await service.insert({
+          'allocation_id': alloc?['id'],
+          'factory_id': factoryId,
+          'usage_date': WIB.toDateString(_usageDate),
+          'used_amount': used,
+          'damaged_amount': damaged,
+          'added_amount': 0,
+          'product_id': entry.productId,
+          'cukai_request_id': null, // No request batch linked
+          'notes': entry.notesController.text.isEmpty ? null : entry.notesController.text,
+          'created_by': userId,
+        });
       }
 
       if (!mounted) return;
